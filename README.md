@@ -1,6 +1,8 @@
 # IESA-Opt_ModelLinking
-This repository contains the model versions and structure needed for hard-linking IESA-Opt-N with the AdOpt-NET0 cluster model. See the repository below for the AdOpt-NET0 model, linking code, and linking instructions. In the linking code, update the file paths to where you have stored the IESA-Opt_ModelLinking repository. The structure of this repository is set up so that hard-linking is possible via a python script. This script does not allow for changes within the AIMMS User Interface, so each of the two versions of IESA-Opt (Fossil Phaseout and Policy Path) corresponds to a scenario. The model code is identical, but default data inputs differ. 
+This repository contains the model versions and structure needed for hard-linking IESA-Opt-N with the AdOpt-NET0 cluster model. See the repository below for the AdOpt-NET0 model, linking code, and linking instructions.
 https://github.com/julia1071/AdOpT-NET0_ModelLink
+
+In the linking code, update the file paths to where you have stored the IESA-Opt_ModelLinking repository. The structure of this repository is set up so that hard-linking is possible via a python script. This script does not allow for changes within the AIMMS User Interface, so each of the two versions of IESA-Opt (Fossil Phaseout and Policy Path) corresponds to a scenario. The model code is identical, but default data inputs differ. Data files for the two scenarios contain different data (though file names are identical): IESA-Opt-N_linking.xlsx.
  
 # IESA-Opt-N
 **IESA-Opt-National (Dutch database)**
