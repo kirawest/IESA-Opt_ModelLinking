@@ -27,7 +27,7 @@ Model IESA_Opt_Package {
 				runDataReading;
 				periods_selection := {2022,2030,2040,2050}; !Assign here the years of which you want to do a similiation.
 				CPUCores := 0; !This is the default which is zero. Depending on your environment you can opt to leave CPU cores alone.
-				hoursPer_day := '1' ; !This is the default. Could be set to 1/6/8/24
+				hoursPer_day := '24' ; !This is the default. Could be set to 1/6/8/24
 				OutputFolderValue := 'custom'; !Customize the name of the output folder and file
 				OutputFolderName := 'ResultsModelLinking' ; !Fill in the name
 				!DefineSolverSettings
@@ -562,7 +562,6 @@ Model IESA_Opt_Package {
 				Index: acf;
 				Definition: {
 					{a | activityType_act(a)='Emission' }
-					! + {a | actSolvePer_actOrig(a)='CO2 Air Feedstock end of Lifetime'}
 					
 					! or actSolvePer_actOrig(a)='CO2 Air Feedstock end of lifetime' or actSolvePer_actOrig(a)='CO2 Air Int. Transport' or actSolvePer_actOrig(a)='CO2 CCUS Network'
 				}
@@ -682,18 +681,6 @@ Model IESA_Opt_Package {
 			Parameter emissionTarget {
 				IndexDomain: (n,p);
 			}
-			Parameter emissionTarget_EOL {
-				IndexDomain: (p);
-				Definition: {
-					data 
-					{ !( NL, 2022 ) : 4000,  ( NL, 2025 ) : 4000,  ( NL, 2030 ) :   4000,  ( NL, 2035 ) :   4000,  ( NL, 2040 ) :    4000,
-					  !( NL, 2045 ) :    4000,  ( NL, 2050 ) :    4000,  ( EU, 2022 ) : 4000,  ( EU, 2025 ) : 4000,  ( EU, 2030 ) :   4000,  ( EU, 2035 ) :   4000,
-					  !( EU, 2040 ) :    4000,  ( EU, 2045 ) :    4000,  (EU,2050): 4000,( XX, 2022 ) : 4000,  ( XX, 2025 ) : 4000,  ( XX, 2030 ) : 4000,
-					  !( XX, 2035 ) : 4000,  ( XX, 2040 ) : 4000,  ( XX, 2045 ) : 4000,  ( XX, 2050 ) : 4000 
-					  (2022):4000,(2025):4000,(2030):4000,(2035):100,(2040):50,(2045):25,(2050):0
-					  }
-				}
-			}
 			Parameter emissionTarget_inclScope3 {
 				IndexDomain: (n,p);
 			}
@@ -705,11 +692,12 @@ Model IESA_Opt_Package {
 				IndexDomain: (n,p);
 				Definition: {
 					data 
-					{ ( NL, 2022 ) : 1000.000,  ( NL, 2025 ) :  1000.000,  ( NL, 2030 ) :  136.8,  ( NL, 2035 ) :  102.6,
-					  ( NL, 2040 ) :   68.4,  ( NL, 2045 ) :   34.2,  ( EU, 2022 ) : 2000.000,  ( EU, 2025 ) : 2000.000,
-					  ( EU, 2030 ) : 2000.000,  ( EU, 2035 ) : 2000.000,  ( EU, 2040 ) : 2000.000,  ( EU, 2045 ) : 2000.000,
-					  ( EU, 2050 ) : 2000.000,  ( XX, 2022 ) : 2000.000,  ( XX, 2025 ) : 2000.000,  ( XX, 2030 ) : 2000.000,
-					  ( XX, 2035 ) : 2000.000,  ( XX, 2040 ) : 2000.000,  ( XX, 2045 ) : 2000.000,  ( XX, 2050 ) : 2000.000 }
+					{ ( NL, 2022 ) : 1000.000,  ( NL, 2025 ) :  425.000,  ( NL, 2030 ) :  142.500,  ( NL, 2035 ) :  113.600,
+					  ( NL, 2040 ) :   78.800,  ( NL, 2045 ) :   44.600,  ( NL, 2050 ) :   15.900,  ( EU, 2022 ) : 2000.000,
+					  ( EU, 2025 ) : 2000.000,  ( EU, 2030 ) : 2000.000,  ( EU, 2035 ) : 2000.000,  ( EU, 2040 ) : 2000.000,
+					  ( EU, 2045 ) : 2000.000,  ( EU, 2050 ) : 2000.000,  ( XX, 2022 ) : 2000.000,  ( XX, 2025 ) : 2000.000,
+					  ( XX, 2030 ) : 2000.000,  ( XX, 2035 ) : 2000.000,  ( XX, 2040 ) : 2000.000,  ( XX, 2045 ) : 2000.000,
+					  ( XX, 2050 ) : 2000.000 }
 				}
 			}
 			Parameter emissionTarget_cum {
@@ -823,53 +811,30 @@ Model IESA_Opt_Package {
 				}
 			}
 			Constraint balance_activities_EmissionTarget {
-				IndexDomain: ps;
+				IndexDomain: (n,ps) | n='NL';
 				Definition: {
 					!sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]  !Reference activity balance
 					!              <= emissionTarget(n,ps)
 					
-					sum[(tb,act) | (nodePer_techBal(tb)='NL'), tech_use(tb,ps)*activity_balances(tb,act,ps)]+  !Reference activity balance
-					sum[(tk,act) | (nodePer_techBal(tk)='NL'), sum[h, deltaU_CHP(h,tk,ps)]*activity_balances(tk,act,ps)]+ !Impact of use deviation of CHPs
-					sum[(ts,act) | (nodePer_techBal(ts)='NL'), sum[h, deltaS_shed(h,ts,ps)]*activity_balances(ts,act,ps)]+ !Impact of shedding load
-					sum[(tb,atb) |(nodePer_techBal(tb)='NL'), tech_use(tb,ps)*activity_balances(tb,atb,ps)]  !Reference activity balance (bunkers)
-					!sum[(tb,atf) | (tech_sector(tb)='Industry')*(nodePer_techBal(tb)='NL')<>0, tech_use(tb,ps)*activity_balances(tb,atf,ps)]  !Reference activity balance (feedstock/end of life exported fuels)
+					sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]+  !Reference activity balance
+					sum[(tk,act), (nodePer_techBal(tk)=n)*sum[h, deltaU_CHP(h,tk,ps)]*activity_balances(tk,act,ps)]+ !Impact of use deviation of CHPs
+					sum[(ts,act), (nodePer_techBal(ts)=n)*sum[h, deltaS_shed(h,ts,ps)]*activity_balances(ts,act,ps)] !Impact of shedding load
 					
 					!adjustment to avoid the incentive to create false negative emissions by exporting synfuels (moving emissions outside the scope of the targets)
-					+sum[(tb) | (tb='OPE01_03')<>0,(tech_use(tb,ps)*0.071)] !transfer of emissions from synfuels for export (syn naphtha)
-					+sum[(tb) | (tb='OPE02_03')<>0,(tech_use(tb,ps)*0.073)]  !transfer of emissions from synfuels for export (syn road fuels)
-					+sum[(tb) | (tb='OPE03_03')<>0,(tech_use(tb,ps)*0.072)] !transfer of emissions from synfuels for export (syn kerosene)
+					+sum[(tb,atf) | (tb='OPE01_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn naphtha)
+					+sum[(tb,atf) | (tb='OPE02_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))]  !transfer of emissions from synfuels for export (syn road fuels)
+					+sum[(tb,atf) | (tb='OPE03_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn kerosene)
 					!adjustment to avoid the incentive to create false negative emissions by using synfuels for bunkers(moving emissions outside the scope of the targets)
-					!+sum[(tb,atb) | (tb='TNB01_05')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from syndiesel ship 
-					!+sum[(tb,atb) | (tb='TNB01_08')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))]  !transfer of emissions from methanol ship 
-					!+sum[(tb,atb) | (tb='TAI01_03')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from synkerosene airplane 
-					!+sum[(tb,atb) | (tb='TAI01_05')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from e-kerosene airplane 
+					+sum[(tb,atb) | (tb='TNB01_05')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from syndiesel ship 
+					+sum[(tb,atb) | (tb='TNB01_08')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))]  !transfer of emissions from methanol ship 
+					+sum[(tb,atb) | (tb='TAI01_03')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from synkerosene airplane 
+					!+sum[(tb,atb) | (tb='TAI01_05')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from e-kerosene airplane 
 					
-					<=  sum[n | (n='NL'),emissionTarget(n,ps)]  ! Includes emissions coming from flexible processes.
-				}
-			}
-			Constraint balance_activities_EmissionTarget_EOL {
-				IndexDomain: (ps) | ps = '2050';
-				Definition: {
-					!sum[(tb,atf), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,atf,ps)]  !Reference activity balance (feedstock/end of life exported fuels)
-					!-
-					!(!adjustment to avoid the incentive to create false negative emissions by exporting synfuels (moving emissions outside the scope of the targets)
-					!+sum[(tb,atf) | (tb='OPE01_03')*(nodePer_techBal(tb)=n)<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn naphtha)
-					!+sum[(tb,atf) | (tb='OPE02_03')*(nodePer_techBal(tb)=n)<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))]  !transfer of emissions from synfuels for export (syn road fuels)
-					!+sum[(tb,atf) | (tb='OPE03_03')*(nodePer_techBal(tb)=n)<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn kerosene)
-					!)
-					!above the old version, which causes numerical instability because of the interdependence of fossil fuel export quantity and domestic energy/emissions
-					
-					sum[(tb) | (tb='OPE01_01')<>0,(tech_use(tb,ps))] !transfer of emissions from fossil fuels for export (naphtha)
-					+sum[(tb) | (tb='OPE02_01')<>0,(tech_use(tb,ps))]  !transfer of emissions from fossil fuels for export (road fuels)
-					+sum[(tb) | (tb='OPE03_01')<>0,(tech_use(tb,ps))] !transfer of emissions from fossil fuels for export (kerosene)
-					!+
-					!sum[(tb,atf), (nodePer_techBal(tb)='NL')*tech_use(tb,ps)*activity_balances(tb,atf,ps)]  !Reference activity balance (feedstock/EOL emissions in NL node)
-					
-					<= 0
+					<=  emissionTarget(n,ps)  ! Includes emissions coming from flexible processes.
 				}
 			}
 			Constraint balance_activities_EmissionTarget_inclScope3 {
-				IndexDomain: (n,ps) | n= 'NL';
+				IndexDomain: (n,ps);
 				Definition: {
 					!sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]  !Reference activity balance
 					!	 <= emissionTarget(n,ps)
@@ -877,8 +842,8 @@ Model IESA_Opt_Package {
 					sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]+  !Reference activity balance (ETS/non-ETS emissions)
 					sum[(tk,act), (nodePer_techBal(tk)=n)*sum[h, deltaU_CHP(h,tk,ps)]*activity_balances(tk,act,ps)]+ !Impact of use deviation of CHPs
 					sum[(ts,act), (nodePer_techBal(ts)=n)*sum[h, deltaS_shed(h,ts,ps)]*activity_balances(ts,act,ps)]+ !Impact of shedding load
-					sum[(tb,atf), tech_use(tb,ps)*activity_balances(tb,atf,ps)]+  !Reference activity balance (feedstock/end of life exported fuels)
-					sum[(tb,atb), tech_use(tb,ps)*activity_balances(tb,atb,ps)]  !Reference activity balance (bunkers)
+					sum[(tb,atf), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,atf,ps)]+  !Reference activity balance (feedstock/end of life exported fuels)
+					sum[(tb,atb), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,atb,ps)]  !Reference activity balance (bunkers)
 					
 					<=  emissionTarget_inclScope3(n,ps)
 				}
@@ -907,17 +872,8 @@ Model IESA_Opt_Package {
 					
 					sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]+  !Reference activity balance (ETS/non-ETS emissions)
 					sum[(tk,act), (nodePer_techBal(tk)=n)*sum[h, deltaU_CHP(h,tk,ps)]*activity_balances(tk,act,ps)]+ !Impact of use deviation of CHPs
-					sum[(ts,act), (nodePer_techBal(ts)=n)*sum[h, deltaS_shed(h,ts,ps)]*activity_balances(ts,act,ps)] !Impact of shedding load
-					!sum[(tb,atb), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,atb,ps)]  !Reference activity balance (bunkers)
-					!sum[(tb,atf), (nodePer_techBal(tb)='NL')*tech_use(tb,ps)*activity_balances(tb,atf,ps)]  !Reference activity balance (feedstock/end of life domestic)
-					
-					!sum[(tb,atf), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,atf,ps)]  !Reference activity balance (feedstock/end of life exported fuels)
-					!+
-					!(!adjustment to avoid the incentive to create false negative emissions by exporting synfuels (moving emissions outside the scope of the targets)
-					!+sum[(tb,atf) | (tb='OPE01_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn naphtha)
-					!+sum[(tb,atf) | (tb='OPE02_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))]  !transfer of emissions from synfuels for export (syn road fuels)
-					!+sum[(tb,atf) | (tb='OPE03_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn kerosene)
-					!)
+					sum[(ts,act), (nodePer_techBal(ts)=n)*sum[h, deltaS_shed(h,ts,ps)]*activity_balances(ts,act,ps)]+ !Impact of shedding load
+					sum[(tb,atb), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,atb,ps)]  !Reference activity balance (bunkers)
 					
 					<=  emissionTarget_inclbunkers(n,ps)
 				}
@@ -2275,7 +2231,7 @@ Model IESA_Opt_Package {
 					data 
 					    { balance_activities                                   , balance_activitiesFix                                ,
 					      balance_activities_matconv                           , balance_activities_emissionsFix                      ,
-					      balance_activities_EmissionTarget                  , capacity_technologies                                ,
+					      balance_activities_EmissionTarget                    , capacity_technologies                                ,
 					!      balance_activities_EmissionTarget_inclScope3         , balance_activities_EmissionTarget_inclScope3andFuelEx , 
 					      emission_targetCum                                   , storageCO2_cumulative                                ,
 					      min_techUse_constraint                               , max_techUse_constraint                               ,
@@ -2426,9 +2382,10 @@ Model IESA_Opt_Package {
 					data 
 					    { balance_activities                                   , balance_activitiesFix                                ,
 					      balance_activities_matconv                           , balance_activities_emissionsFix                      ,
-					  !    balance_activities_EmissionTarget                    , 
+					 !     balance_activities_EmissionTarget                    , 
 					 capacity_technologies                                ,
-					     balance_activities_EmissionTarget_inclScope3         , 
+					 !    balance_activities_EmissionTarget_inclScope3         , 
+					 balance_activities_EmissionTarget_inclScope3andFuelEx , 
 					      emission_targetCum                                   , storageCO2_cumulative                                ,
 					      min_techUse_constraint                               , max_techUse_constraint                               ,
 					      decomStock                                           , techStock                                            ,
@@ -2881,10 +2838,10 @@ Model IESA_Opt_Package {
 				
 				! Set options to default
 				option "GUROBI 12.0".Method := 2 ;
-				option "GUROBI 12.0".Numeric_focus := 3 ; !2 default
+				option "GUROBI 12.0".Numeric_focus := 2 ; !2 default
 				option "GUROBI 12.0".Log_to_console := 1 ;
 				option "GUROBI 12.0".Output_file := 1 ;
-				option "GUROBI 12.0".Presolve := 0 ; !-1 default
+				option "GUROBI 12.0".Presolve := -1 ; !-1 default
 				option "GUROBI 12.0".Presolve_aggregation := 1 ;
 				option "GUROBI 12.0".Presolve_aggregation_fill := -1 ;
 				option "GUROBI 12.0".Presolve_dual := -1 ;
@@ -2907,7 +2864,7 @@ Model IESA_Opt_Package {
 					option "GUROBI 12.0".Numeric_focus := 3 ; !2 defai;t
 					option "GUROBI 12.0".Log_to_console := 1 ;
 					option "GUROBI 12.0".Output_file := 1 ;
-					option "GUROBI 12.0".Presolve := 0 ; !1 default (conservative)
+					option "GUROBI 12.0".Presolve := 1 ; !1 default (conservative)
 					option "GUROBI 12.0".Presolve_aggregation := 2 ;
 					option "GUROBI 12.0".Presolve_aggregation_fill := 5 ;
 					option "GUROBI 12.0".Presolve_dual := 0 ;
@@ -3119,7 +3076,7 @@ Model IESA_Opt_Package {
 						CO2_prices(acf,p):= balance_activities_emissionsFix(acf,p).ShadowPrice;
 						CO2_prices(acf,pss):= CO2_prices(acf,pss)/social_discount_factor(pss);
 						PCO2_prices(acf,pss) := CO2_prices(acf,pss);
-						CO2_price_single(n,p) := balance_activities_emissiontarget(p).ShadowPrice;
+						CO2_price_single(n,p) := balance_activities_emissiontarget(n,p).ShadowPrice;
 						CO2_price_single(n,pss) := CO2_price_single(n,pss)/social_discount_factor(pss);
 					
 						if (HourlyReportValue = 'yes') then
@@ -3283,7 +3240,7 @@ Model IESA_Opt_Package {
 							CO2_prices(acf,p):= balance_activities_emissionsFix(acf,p).ShadowPrice;
 							CO2_prices(acf,pss):= CO2_prices(acf,pss)/social_discount_factor(pss);
 							PCO2_prices(acf,pss) := CO2_prices(acf,pss);
-							CO2_price_single(n,p) := balance_activities_emissiontarget(p).ShadowPrice;
+							CO2_price_single(n,p) := balance_activities_emissiontarget(n,p).ShadowPrice;
 							CO2_price_single(n,pss) := CO2_price_single(n,pss)/social_discount_factor(pss);
 							!Save intrayear prices (shadow prices)
 							hourly_prices(h,ah,p):=balance_activitiesHourly(h,ah,p).ShadowPrice;
@@ -3513,7 +3470,7 @@ Model IESA_Opt_Package {
 											BatchSolve_totalCosts(ifsb) := round(totalCosts,2) ;
 											BatchSolve_techStock(ifsb,t,pss) := round(techStock(t,pss),4) ;
 											BatchSolve_tech_use(ifsb,tb,pss) := round(tech_use(tb,pss),4) ;
-											BatchSolve_CO2_price(ifsb,n,pss) := round( -1 * balance_activities_EmissionTarget(pss).ShadowPrice / social_discount_factor(pss), 2) ;
+											BatchSolve_CO2_price(ifsb,n,pss) := round( -1 * balance_activities_EmissionTarget(n,pss).ShadowPrice / social_discount_factor(pss), 2) ;
 											BatchSolve_yearly_prices(ifsb,as,pss) := round( -1 * balance_activities(as,pss).ShadowPrice / social_discount_factor(pss), 2) ;
 											if (HourlyReportValue = 'yes') then
 												BatchSolve_tech_use_h(ifsb,h,th,pss) := round(tech_useHourly(h,th,pss), 4);
@@ -3666,7 +3623,7 @@ Model IESA_Opt_Package {
 												BatchSolve_totalCosts(ifsb) := round(totalCosts,2) ;
 												BatchSolve_techStock(ifsb,t,pss) := round(techStock(t,pss),4) ;
 												BatchSolve_tech_use(ifsb,tb,pss) := round(tech_use(tb,pss),4) ;
-												BatchSolve_CO2_price(ifsb,n,pss) := round( -1 * balance_activities_EmissionTarget(pss).ShadowPrice / social_discount_factor(pss), 2) ;
+												BatchSolve_CO2_price(ifsb,n,pss) := round( -1 * balance_activities_EmissionTarget(n,pss).ShadowPrice / social_discount_factor(pss), 2) ;
 												BatchSolve_yearly_prices(ifsb,as,pss) := round( -1 * balance_activities(as,pss).ShadowPrice / social_discount_factor(pss), 2) ;
 											endif;
 										endfor;
@@ -4828,8 +4785,7 @@ Model IESA_Opt_Package {
 			Parameter emissions_sec {
 				IndexDomain: (nn,z,aer,p);
 				Definition: {
-					!sum[tb, (namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)*IEM_node(nodePer_techBal(tb))]   ! Sectoral emissions
-					sum[tb, (namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)]   ! Sectoral emissions
+					sum[tb, (namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)*IEM_node(nodePer_techBal(tb))]   ! Sectoral emissions
 				}
 			}
 			Parameter emissions_sec_kev {
@@ -4847,10 +4803,7 @@ Model IESA_Opt_Package {
 			}
 			Parameter emissions_tech {
 				IndexDomain: (nn,z,as,tb,tn,aer,p);
-				Definition: {
-					!(namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*(tech_name(tb)=tn)*(activityPer_tech(tb)=as)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)*IEM_node(nodePer_techBal(tb))
-					(namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*(tech_name(tb)=tn)*(activityPer_tech(tb)=as)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)
-				}
+				Definition: (namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*(tech_name(tb)=tn)*(activityPer_tech(tb)=as)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)*IEM_node(nodePer_techBal(tb));
 			}
 			Parameter emissions_tech_kev {
 				IndexDomain: (nn,zk,as,tb,tn,aer,p);
@@ -7025,8 +6978,6 @@ Model IESA_Opt_Package {
 							       DataRange           	:  "D5:"+ColName+FormatString("%i",axll::LastUsedRowNumber),
 							       MergeWithExistingData	:  0);       
 					
-					
-					
 							!Select the workbook sheet
 							axll::SelectSheet("Technologies");
 					
@@ -7369,39 +7320,6 @@ Model IESA_Opt_Package {
 							       DataRange           	:  FormatString("DD7:DJ%i",axll::LastUsedRowNumber),
 							       MergeWithExistingData	:  0);
 					
-							!Select the workbook sheet
-						!	axll::SelectSheet("LinkedProfiles");
-					
-						!	axll::ColumnName(axll::LastUsedColumnNumber,ColName);
-					
-							!Read the sets
-						!	axll::ReadSet(
-						!		SetReference    			:  hours_orig,
-						!		SetRange        			:  FormatString("A5:A%i",axll::LastUsedRowNumber),
-						!		ExtendSuperSets 			:  1,
-						!		MergeWithExistingElements		:  0,
-						!		SkipEmptyCells				:  1);
-					
-						!	axll::ReadList(
-						!	       IdentifierReference 	:  monthPer_hourOrig,
-						!	       RowHeaderRange      	:  FormatString("A5:A%i",axll::LastUsedRowNumber),
-						!	       DataRange           	:  FormatString("C5:C%i",axll::LastUsedRowNumber),
-						!	       MergeWithExistingData	:  0);   
-					
-					
-						!	axll::ReadTable(
-						!	       IdentifierReference 	:  linked_profiles_upORIG,
-						!	       RowHeaderRange      	:  FormatString("A5:A%i",axll::LastUsedRowNumber),
-						!	       ColumnHeaderRange      	:  "D2:R3",
-						!	       DataRange           	:  "D5:R"+FormatString("%i",axll::LastUsedRowNumber),
-						!	       MergeWithExistingData	:  0);       
-					
-						!	axll::ReadTable(
-						!	       IdentifierReference 	:  linked_profiles_downORIG,
-						!	       RowHeaderRange      	:  FormatString("A5:A%i",axll::LastUsedRowNumber),
-						!	       ColumnHeaderRange      	:  "S2:"+ColName+"3",
-						!	       DataRange           	:  "S5:"+ColName+FormatString("%i",axll::LastUsedRowNumber),
-						!	       MergeWithExistingData	:  0);     
 					
 					
 							!Select the workbook sheet
@@ -10634,35 +10552,6 @@ Model IESA_Opt_Package {
 					<= 1609  ! EED target by 2030
 				}
 			}
-			Set linked_profile_tech {
-				SubsetOf: tech_flexible;
-				Index: tfo;
-				Definition: {
-					!data { ICH01_05, ICH01_06, ICH01_40, Amm01_05, Amm01_08 }
-				}
-			}
-			Parameter linked_profiles_upORIG {
-				IndexDomain: (ho,tfo,p);
-			}
-			Parameter linked_profiles_downORIG {
-				IndexDomain: (ho,tfo,p);
-			}
-			Parameter linked_profiles_up {
-				IndexDomain: (h,tfo,p);
-				Definition: sum[ho, linked_profiles_upORIG(ho,tfo,p)*(hoursPer_hourOrig(ho)=h)]*-1;
-			}
-			Parameter linked_profiles_down {
-				IndexDomain: (h,tfo,p);
-				Definition: sum[ho, linked_profiles_downORIG(ho,tfo,p)*(hoursPer_hourOrig(ho)=h)]*-1;
-			}
-			Constraint linked_profiles_constraint_UP {
-				IndexDomain: (h,tfo,ps) | ps>='2030';
-				Definition: deltaQ_UP(h,tfo,ps)=linked_profiles_up(h,tfo,ps);
-			}
-			Constraint linked_profiles_constraint_DOWN {
-				IndexDomain: (h,tfo,ps) | ps>='2030';
-				Definition: deltaQ_DW(h,tfo,ps)=linked_profiles_down(h,tfo,ps);
-			}
 		}
 		DeclarationSection Nuclear {
 			Constraint MinLoad {
@@ -10683,9 +10572,14 @@ Model IESA_Opt_Package {
 		}
 		DeclarationSection Adapt_Sena {
 			Parameter test {
-				IndexDomain: (n,ps);
+				IndexDomain: p;
 				Definition: {
-					sum[(tb,atf) | (tech_sector(tb)='Industry')*(nodePer_techBal(tb)='XX')<>0, tech_use(tb,ps)*activity_balances(tb,atf,ps)]  !Reference activity balance (feedstock/end of life exported fuels)
+					sum[(atb,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
+						(tech_use(t,p)+				! Reference activity balance
+							sum[h, deltaU_CHP(h,t,p)]+		!Impact of use deviation of CHPs
+							sum[h, deltaS_shed(h,t,p)])*		!Impact of shedding load
+						activity_balances(t,atb,p)
+					]
 				}
 			}
 			Constraint Adapt_SectoTarget_emi_R {

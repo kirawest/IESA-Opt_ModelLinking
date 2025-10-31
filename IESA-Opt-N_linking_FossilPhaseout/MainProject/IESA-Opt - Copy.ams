@@ -1,47 +1,6 @@
 ## ams_version=1.0
 
 Model IESA_Opt_Package {
-	Section Model_linking {
-		Procedure Run_IESA {
-			Body: {
-				StatusMessage("Starting optimization...");
-				! Step 1: Apply settings procedure
-				Settings_Solve_Transition;
-				StatusMessage("Settings for optimization are set");
-				! Step 2: Solve the model
-				SolveTransition;
-				
-				! Create a new Excel workbook to act as a signal
-				   ! axll::CreateNewWorkbook(
-				     !   WorkbookFilename: "U:/IESA-Opt-ModelLinking/Finish_Signal/procedure_done.xlsx",
-				       ! FirstSheetName: "Signal"
-				    !);
-				StatusMessage("The transition is solved!");
-			}
-		}
-		Procedure Settings_Solve_Transition {
-			Body: {
-				RetreiveExistingOutputFolders;
-				RetreiveExistingInputFiles;
-				DefaultInputLocation;
-				runDataReading;
-				periods_selection := {2022,2030,2040,2050}; !Assign here the years of which you want to do a similiation.
-				CPUCores := 0; !This is the default which is zero. Depending on your environment you can opt to leave CPU cores alone.
-				hoursPer_day := '24' ; !This is the default. Could be set to 1/6/8/24
-				OutputFolderValue := 'custom'; !Customize the name of the output folder and file
-				OutputFolderName := 'ResultsModelLinking' ; !Fill in the name
-				!DefineSolverSettings
-				!SolverChoice if you want to change the solver
-				!SolverMethodChoice
-				EnergyPricesChoice := 'Marginal Costs' ; !Default is set to shadow prices.
-				!ShowViolations := 'Yes' ;! !Default is set to no.
-				!SaveCaseValue := 'Yes';! !Default is set to no.
-				!HourlyReportValue := 'Yes';! !Default is set to no.
-				ActiveConstraintGroup := 'Linking scenario'; !Default is set to Base - this also includes RFNBO & EED policies
-				!activeConstraints options can be found in ActiveConstraintGroups
-			}
-		}
-	}
 	Section Model_description {
 		DeclarationSection Temporal_relations {
 			Set hours {
@@ -608,13 +567,6 @@ Model IESA_Opt_Package {
 					{as | activityType_act(as)='EmissionReport'}
 				}
 			}
-			Set activities_credits {
-				SubsetOf: activities_solve;
-				Index: acr, iacr, jacr;
-				Definition: {
-					{as |activityType_act(as)='Credits'}
-				}
-			}
 			Set technologies {
 				Index: t, it, jt;
 			}
@@ -688,18 +640,6 @@ Model IESA_Opt_Package {
 				IndexDomain: p;
 				Definition: sum[n|n='NL',emissionTarget_inclScope3(n,p)];
 			}
-			Parameter emissionTarget_inclbunkers {
-				IndexDomain: (n,p);
-				Definition: {
-					data 
-					{ ( NL, 2022 ) : 1000.000,  ( NL, 2025 ) :  425.000,  ( NL, 2030 ) :  142.500,  ( NL, 2035 ) :  113.600,
-					  ( NL, 2040 ) :   78.800,  ( NL, 2045 ) :   44.600,  ( NL, 2050 ) :   15.900,  ( EU, 2022 ) : 2000.000,
-					  ( EU, 2025 ) : 2000.000,  ( EU, 2030 ) : 2000.000,  ( EU, 2035 ) : 2000.000,  ( EU, 2040 ) : 2000.000,
-					  ( EU, 2045 ) : 2000.000,  ( EU, 2050 ) : 2000.000,  ( XX, 2022 ) : 2000.000,  ( XX, 2025 ) : 2000.000,
-					  ( XX, 2030 ) : 2000.000,  ( XX, 2035 ) : 2000.000,  ( XX, 2040 ) : 2000.000,  ( XX, 2045 ) : 2000.000,
-					  ( XX, 2050 ) : 2000.000 }
-				}
-			}
 			Parameter emissionTarget_cum {
 				IndexDomain: n;
 			}
@@ -757,6 +697,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint balance_activities {
 				IndexDomain: (ab,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					sum[tb, tech_use(tb,ps)*activity_balances(tb,ab,ps)]+  !Reference activity balance
 					sum[tf, sum[h, (deltaQ_UP(h,tf,ps)+deltaQ_DW(h,tf,ps))]*dQ_hourly(tf,ab)]+ !Impact of flexibility in hourly activities
@@ -771,6 +712,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint balance_activitiesFix {
 				IndexDomain: (af,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					sum[tb, tech_use(tb,ps)*activity_balances(tb,af,ps)]+  !Reference activity balance
 					sum[tf, sum[h, (deltaQ_UP(h,tf,ps)+deltaQ_DW(h,tf,ps))]*dQ_hourly(tf,af)]+ !Impact of flexibility in hourly activities
@@ -785,6 +727,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint balance_activities_matconv {
 				IndexDomain: (amc,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					sum[tb, tech_use(tb,ps)*activity_balances(tb,amc,ps)]+  !Reference activity balance
 					sum[tf, sum[h, (deltaQ_UP(h,tf,ps)+deltaQ_DW(h,tf,ps))]*dQ_hourly(tf,amc)]+ !Impact of flexibility in hourly activities
@@ -811,30 +754,21 @@ Model IESA_Opt_Package {
 				}
 			}
 			Constraint balance_activities_EmissionTarget {
-				IndexDomain: (n,ps) | n='NL';
+				IndexDomain: (n,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					!sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]  !Reference activity balance
-					!              <= emissionTarget(n,ps)
+					!	 <= emissionTarget(n,ps)
 					
 					sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]+  !Reference activity balance
 					sum[(tk,act), (nodePer_techBal(tk)=n)*sum[h, deltaU_CHP(h,tk,ps)]*activity_balances(tk,act,ps)]+ !Impact of use deviation of CHPs
 					sum[(ts,act), (nodePer_techBal(ts)=n)*sum[h, deltaS_shed(h,ts,ps)]*activity_balances(ts,act,ps)] !Impact of shedding load
-					
-					!adjustment to avoid the incentive to create false negative emissions by exporting synfuels (moving emissions outside the scope of the targets)
-					+sum[(tb,atf) | (tb='OPE01_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn naphtha)
-					+sum[(tb,atf) | (tb='OPE02_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))]  !transfer of emissions from synfuels for export (syn road fuels)
-					+sum[(tb,atf) | (tb='OPE03_03')*(nodePer_techBal(tb)='EU')<>0,(tech_use(tb,ps)*activity_balances(tb,atf,ps))] !transfer of emissions from synfuels for export (syn kerosene)
-					!adjustment to avoid the incentive to create false negative emissions by using synfuels for bunkers(moving emissions outside the scope of the targets)
-					+sum[(tb,atb) | (tb='TNB01_05')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from syndiesel ship 
-					+sum[(tb,atb) | (tb='TNB01_08')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))]  !transfer of emissions from methanol ship 
-					+sum[(tb,atb) | (tb='TAI01_03')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from synkerosene airplane 
-					!+sum[(tb,atb) | (tb='TAI01_05')*(nodePer_techBal(tb)='NL')<>0,(tech_use(tb,ps)*activity_balances(tb,atb,ps))] !transfer of emissions from e-kerosene airplane 
-					
 					<=  emissionTarget(n,ps)  ! Includes emissions coming from flexible processes.
 				}
 			}
 			Constraint balance_activities_EmissionTarget_inclScope3 {
 				IndexDomain: (n,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					!sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]  !Reference activity balance
 					!	 <= emissionTarget(n,ps)
@@ -850,6 +784,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint balance_activities_EmissionTarget_inclScope3andFuelEx {
 				IndexDomain: (ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					!sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]  !Reference activity balance
 					!	 <= emissionTarget(n,ps)
@@ -864,22 +799,9 @@ Model IESA_Opt_Package {
 					<=  emissionTarget_inclScope3andFuelex(ps)  ! Includes emissions coming from flexible processes.
 				}
 			}
-			Constraint balance_activities_EmissionTarget_inclBunkers {
-				IndexDomain: (n,ps);
-				Definition: {
-					!sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]  !Reference activity balance
-					!	 <= emissionTarget(n,ps)
-					
-					sum[(tb,act), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,act,ps)]+  !Reference activity balance (ETS/non-ETS emissions)
-					sum[(tk,act), (nodePer_techBal(tk)=n)*sum[h, deltaU_CHP(h,tk,ps)]*activity_balances(tk,act,ps)]+ !Impact of use deviation of CHPs
-					sum[(ts,act), (nodePer_techBal(ts)=n)*sum[h, deltaS_shed(h,ts,ps)]*activity_balances(ts,act,ps)]+ !Impact of shedding load
-					sum[(tb,atb), (nodePer_techBal(tb)=n)*tech_use(tb,ps)*activity_balances(tb,atb,ps)]  !Reference activity balance (bunkers)
-					
-					<=  emissionTarget_inclbunkers(n,ps)
-				}
-			}
 			Constraint capacity_technologies {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					tech_use(t,ps)<=cap2act(t)*techStock(t,ps)
 					+sum[h, deltaW_UP(h,t,ps)]*(1-phs_Losses(t)) !Pumped hydro storage allows for a higher discharge
@@ -887,6 +809,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint emission_targetCum {
 				IndexDomain: ni;
+				Property: ShadowPrice, Basic;
 				Definition: {
 					!The sum of the use of all the emissions released to air in each node
 					sum[(tb,act,ps), tech_use(tb,ps) * (nodePer_act(act)=ni) * activity_balances(tb,act,ps) * period_weight(ps) * transition_interval]
@@ -895,6 +818,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint storageCO2_cumulative {
 				IndexDomain: ni;
+				Property: ShadowPrice, Basic;
 				Definition: {
 					!The sum of the use of all the CO2 stored in each node
 					sum[(tb,ps), tech_use(tb,ps)*(tech_subsector(tb)="CCUS Storage")*period_weight(ps)*transition_interval]
@@ -904,6 +828,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint min_techUse_constraint {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					(techUse_min(t,ps)<>0) * (
 						tech_use(t,ps)+sum[h, PdeltaU_CHP(h,t,ps)]+sum[h, PdeltaS_shed(h,t,ps)] 
@@ -914,6 +839,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint max_techUse_constraint {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					(techUse_max(t,ps)<>0) * (
 						tech_use(t,ps)+sum[h, deltaU_CHP(h,t,ps)]+sum[h, deltaS_shed(h,t,ps)]
@@ -1138,30 +1064,37 @@ Model IESA_Opt_Package {
 			}
 			Constraint actStock_constraints {
 				IndexDomain: (av,ps);
+				Property: ShadowPrice, Basic;
 				Definition: sum[t | activityPer_tech(t)=av, techStock(t,ps)*cap2act(t)+sum[h, deltaS_shed(h,t,ps)]]=activities_netVolumes(av,ps);
 			}
 			Constraint techStockCap_contraints_mat {
 				IndexDomain: (t_m,ps);
+				Property: ShadowPrice, Basic;
 				Definition: techStock(t_m,ps)*cap2act(t_m)+sum[h, deltaS_shed(h,t_m,ps)]>=tech_use(t_m,ps);
 			}
 			Constraint minStock_constraints {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: techStock(t,ps)>=techStock_min(t,ps);
 			}
 			Constraint maxStock_constraints {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: techStock(t,ps)<=techStock_max(t,ps);
 			}
 			Constraint actInv_constraints {
 				IndexDomain: (ar,ps);
+				Property: ShadowPrice, Basic;
 				Definition: sum[t | activityPer_tech(t)=ar, cap_investments(t,ps)*cap2act(t)+sum[h, deltaS_shed(h,t,ps)]]<=activities_netVolumes(ar,ps)*actChange_max(ar)*period_span(ps)/100;
 			}
 			Constraint techInv_constraints {
 				IndexDomain: (tr,ps);
+				Property: ShadowPrice, Basic;
 				Definition: cap_investments(tr,ps)<=techChange_max(tr)*period_span(ps);
 			}
 			Constraint retrofit_constraint {
 				IndexDomain: (it,jt,ps);
+				Property: ShadowPrice, Basic;
 				Definition: {
 					if(ps=element(periods_selection,1)) then
 						retrofit_relations(it,jt)*techStock_exist(it)-retrofitting(it,jt,ps)
@@ -1174,14 +1107,17 @@ Model IESA_Opt_Package {
 			}
 			Constraint eco_decom_constraint {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: no_eco_decom(t,ps) * eco_decommisioning(t,ps) = 0;
 			}
 			Constraint eco_decom_max {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: eco_decommisioning(t,ps)<=techStock_exist(t)-decom_plannedSel(t,ps);
 			}
 			Constraint limit_new_invest {
 				IndexDomain: (t,ps);
+				Property: ShadowPrice, Basic;
 				Definition: no_new_invest(t,ps) * cap_investments(t,ps) = 0;
 				Comment: {
 					"To be deleted after test: !sum[(ps)|no_new_invest(t,ps)=1,cap_investments(t,ps)]=0"
@@ -2276,29 +2212,19 @@ Model IESA_Opt_Package {
 			Set ADAPTConstraints {
 				SubsetOf: AllConstraints;
 				Definition: {
-					data 
-					    { Adapt_SectoTarget_emi_R          , Adapt_SectoTarget_emi_A          , Adapt_SectoTarget_emi_T          ,
-					      Adapt_SectoTarget_emi_I          , Adapt_SectoTarget_emi_E          , Adapt_SectoTarget_emi30_BunkerNav,
-					      Adapt_SectoTarget_emi35_BunkerNav, Adapt_SectoTarget_emi40_BunkerNav, Adapt_SectoTarget_emi45_BunkerNav,
-					      Adapt_SectoTarget_emi50_BunkerNav, Adapt_SectoTarget_emi30_BunkerAvi, Adapt_SectoTarget_emi35_BunkerAvi,
-					      Adapt_SectoTarget_emi40_BunkerAvi, Adapt_SectoTarget_emi45_BunkerAvi, Adapt_SectoTarget_emi50_BunkerAvi,
-					      Adapt_RefinProd_2030             , Adapt_RefinProd_2050             , Adapt_FinalEnergy_2030           ,
-					      CO2_credits_Avi                  , CO2_credits_Nav                  }
-				}
-			}
-			Set ADAPTbunkerConstraints {
-				SubsetOf: AllConstraints;
-				Definition: {
-					data 
-					    { Adapt_SectoTarget_emi_R          , Adapt_SectoTarget_emi_A          , Adapt_SectoTarget_emi_T          ,
-					      Adapt_SectoTarget_emi_I          , Adapt_SectoTarget_emi_E          , Adapt_SectoTarget_emi30_BunkerNav,
-					      Adapt_SectoTarget_emi35_BunkerNav, Adapt_SectoTarget_emi40_BunkerNav, Adapt_SectoTarget_emi45_BunkerNav,
-					      Adapt_SectoTarget_emi50_BunkerNav, Adapt_SectoTarget_emi30_BunkerAvi, Adapt_SectoTarget_emi35_BunkerAvi,
-					      Adapt_SectoTarget_emi40_BunkerAvi, Adapt_SectoTarget_emi45_BunkerAvi, Adapt_SectoTarget_emi50_BunkerAvi,
-					      Adapt_RefinProd_2030             , Adapt_RefinProd_2050             , Adapt_FinalEnergy_2030           ,
-					      CO2_credits_Avi                  , CO2_credits_Nav                  , ESAF_Aviation                        ,
-					      SAF_Aviation                         ,
-					      H2_credits_Avi                   , SectorTarget_emi_BunkerNav      }
+					data{	
+					! ADAPT scenario constraints
+					       Adapt_SectoTarget_emi_R                              , Adapt_SectoTarget_emi_A                              
+					    ,  Adapt_SectoTarget_emi_T                              , Adapt_SectoTarget_emi_I                             
+					    ,  Adapt_SectoTarget_emi_E                              , Adapt_SectoTarget_emi30_BunkerAvi                   
+					    ,  Adapt_SectoTarget_emi35_BunkerAvi                    , Adapt_SectoTarget_emi40_BunkerAvi                   
+					    ,  Adapt_SectoTarget_emi45_BunkerAvi                    , Adapt_SectoTarget_emi50_BunkerAvi                    
+					    ,  Adapt_SectoTarget_emi30_BunkerNav                    , Adapt_SectoTarget_emi35_BunkerNav                    
+					    ,  Adapt_SectoTarget_emi40_BunkerNav                    , Adapt_SectoTarget_emi45_BunkerNav                    
+					    ,  Adapt_SectoTarget_emi50_BunkerNav                    , Adapt_RefinProd_2030                                 
+					    ,  Adapt_RefinProd_2050                                 , Adapt_FinalEnergy_2030                               
+					    , Adapt_ReFuelEU_Avi        
+					 }
 				}
 			}
 			Set TRANSFORMConstraints {
@@ -2315,117 +2241,6 @@ Model IESA_Opt_Package {
 					}
 				}
 			}
-			Set BasewithBunkers {
-				SubsetOf: AllConstraints;
-				Definition: {
-					data 
-					    { balance_activities                                   , balance_activitiesFix                                ,
-					      balance_activities_matconv                           , balance_activities_emissionsFix                      ,
-					      balance_activities_EmissionTarget_inclBunkers                    , capacity_technologies                                ,
-					 !     balance_activities_EmissionTarget_inclScope3         , balance_activities_EmissionTarget_inclScope3andFuelEx , 
-					      emission_targetCum                                   , storageCO2_cumulative                                ,
-					      min_techUse_constraint                               , max_techUse_constraint                               ,
-					      decomStock                                           , techStock                                            ,
-					      actStock_constraints                                 , techStockCap_contraints_mat                          ,
-					      minStock_constraints                                 , maxStock_constraints                                 ,
-					      actInv_constraints                                   , techInv_constraints                                  ,
-					      retrofit_constraint                                  , limit_new_invest                                     ,
-					      eco_decom_constraint	                           , eco_decom_max                                        ,
-					      balance_activitiesHourly                             , balance_yearlyhourly                                 ,
-					      capacity_techHourly                                  , rampingUP_techHourly                                 ,
-					      rampingDW_techHourly                                 , deltaB_S                                             ,
-					      balance_activitiesDaily                              , balance_yearlyDaily                                  ,
-					      capacity_techDaily                                   , balanceY_dB                                          ,
-					      capacityUP_dB                                        , capacityDW_dB                                        ,
-					      cummulativeS_dB                                      , balanceH_deltaHchp                                   ,
-					      balanceD_deltaHchp                                   , balanceW_deltaHchp                                   ,
-					      capacityUP_deltaUchp                                 , capacityDW_deltaUchp                                 ,
-					      capacityUP_deltaPchp                                 , capacityDW_deltaPchp                                 ,
-					      deltaQ_S                                             , deltaQd_UP                                           ,
-					      deltaQd_DW                                           , deltaW_S                                             ,
-					      balanceH_deltaS                                      , balanceW_deltaS                                      ,
-					      capacity_deltaS                                      , sufficiency_deltaS                                   ,
-					      balanceQ_deltaQtfe                                   , balanceD_deltaQd                                     ,
-					      balanceR_deltaQd                                     , balanceW_deltaQd                                     ,
-					      balanceM_deltaQd                                     , balanceS_deltaQd                                     ,
-					      balanceB_deltaQd                                     , balanceY_deltaQd                                     ,
-					      capacityUP_dQtfe                                     , capacityUP_dQtfs                                     ,
-					      capacityUP_dQtfb                                     , capacityUP_dQtfv                                     ,
-					      capacityUP_dW                                        , capacityDW_dQtfe                                     ,
-					      capacityDW_dQtfs                                     , capacityDW_dQtfb                                     ,
-					      capacityDW_dQtfvc                                    , capacityDW_dQtfvg                                    ,
-					      capacityDW_dW                                        , cumulativeUP_dQtfe					  ,
-					      cumulativeUP_dQtfs				   , cumulativeDW_dQtfs					  ,
-					      cumulativeDW_dQtfe				   , cumulativeS_dQtfb 					  ,
-					      cumulativeS_dQtfv 				   , cumulativeS_dW					  ,
-					      nonPos_Shed                                          , infraVol_H                                           , 
-					      infraVol_D      
-					      }
-				}
-			}
-			Set RFNBOConstraints {
-				SubsetOf: AllConstraints;
-				Definition: {
-					data 
-					    { CO2_credits_Avi            , CO2_credits_Nav            , eSAF_Aviation                 , SAF_Aviation                  ,
-					      H2_credits_Avi             , SectorTarget_emi_BunkerNav, H2_credits_Nav             , RFNBO_industry        ,
-					      RFNBO_transport            , H2_credits_transport       , H2_credits_industry        }
-				}
-			}
-			Set LinkingConstraints {
-				SubsetOf: AllConstraints;
-				Definition: data { EED_FinalEnergy_2030 };
-			}
-			Set BaseScope3Constraints {
-				SubsetOf: AllConstraints;
-				Definition: {
-					data 
-					    { balance_activities                                   , balance_activitiesFix                                ,
-					      balance_activities_matconv                           , balance_activities_emissionsFix                      ,
-					 !     balance_activities_EmissionTarget                    , 
-					 capacity_technologies                                ,
-					 !    balance_activities_EmissionTarget_inclScope3         , 
-					 balance_activities_EmissionTarget_inclScope3andFuelEx , 
-					      emission_targetCum                                   , storageCO2_cumulative                                ,
-					      min_techUse_constraint                               , max_techUse_constraint                               ,
-					      decomStock                                           , techStock                                            ,
-					      actStock_constraints                                 , techStockCap_contraints_mat                          ,
-					      minStock_constraints                                 , maxStock_constraints                                 ,
-					      actInv_constraints                                   , techInv_constraints                                  ,
-					      retrofit_constraint                                  , limit_new_invest                                     ,
-					      eco_decom_constraint	                           , eco_decom_max                                        ,
-					      balance_activitiesHourly                             , balance_yearlyhourly                                 ,
-					      capacity_techHourly                                  , rampingUP_techHourly                                 ,
-					      rampingDW_techHourly                                 , deltaB_S                                             ,
-					      balance_activitiesDaily                              , balance_yearlyDaily                                  ,
-					      capacity_techDaily                                   , balanceY_dB                                          ,
-					      capacityUP_dB                                        , capacityDW_dB                                        ,
-					      cummulativeS_dB                                      , balanceH_deltaHchp                                   ,
-					      balanceD_deltaHchp                                   , balanceW_deltaHchp                                   ,
-					      capacityUP_deltaUchp                                 , capacityDW_deltaUchp                                 ,
-					      capacityUP_deltaPchp                                 , capacityDW_deltaPchp                                 ,
-					      deltaQ_S                                             , deltaQd_UP                                           ,
-					      deltaQd_DW                                           , deltaW_S                                             ,
-					      balanceH_deltaS                                      , balanceW_deltaS                                      ,
-					      capacity_deltaS                                      , sufficiency_deltaS                                   ,
-					      balanceQ_deltaQtfe                                   , balanceD_deltaQd                                     ,
-					      balanceR_deltaQd                                     , balanceW_deltaQd                                     ,
-					      balanceM_deltaQd                                     , balanceS_deltaQd                                     ,
-					      balanceB_deltaQd                                     , balanceY_deltaQd                                     ,
-					      capacityUP_dQtfe                                     , capacityUP_dQtfs                                     ,
-					      capacityUP_dQtfb                                     , capacityUP_dQtfv                                     ,
-					      capacityUP_dW                                        , capacityDW_dQtfe                                     ,
-					      capacityDW_dQtfs                                     , capacityDW_dQtfb                                     ,
-					      capacityDW_dQtfvc                                    , capacityDW_dQtfvg                                    ,
-					      capacityDW_dW                                        , cumulativeUP_dQtfe					  ,
-					      cumulativeUP_dQtfs				   , cumulativeDW_dQtfs					  ,
-					      cumulativeDW_dQtfe				   , cumulativeS_dQtfb 					  ,
-					      cumulativeS_dQtfv 				   , cumulativeS_dW					  ,
-					      nonPos_Shed                                          , infraVol_H                                           , 
-					      infraVol_D      
-					      }
-				}
-			}
 			Set activeConstraints {
 				SubsetOf: AllConstraints;
 				Definition: {
@@ -2435,24 +2250,6 @@ Model IESA_Opt_Package {
 						BaseConstraints + ADAPTConstraints
 					elseif ActiveConstraintGroup = 'TRANSFORM' then
 						BaseConstraints + TRANSFORMConstraints
-					elseif ActiveConstraintGroup = 'ADAPT + bunker aviation & navigation policy' then
-						BaseConstraints + ADAPTbunkerConstraints
-					elseif ActiveConstraintGroup = 'ADAPT with bunkers in single constraint' then
-						BasewithBunkers + ADAPTConstraints
-					!elseif ActiveConstraintGroup = 'Base + DMI' then
-					!	BaseConstraints + DMIConstraints
-					!elseif ActiveConstraintGroup = 'Base + DMI without emissions' then
-					!	DMIConstraintswithoutEmissions
-					elseif ActiveConstraintGroup = 'Base + Bunkers in a single constraint' then
-						BasewithBunkers
-					elseif ActiveConstraintGroup = 'Base + RFNBO targets' then
-						BaseConstraints + RFNBOConstraints
-					elseif ActiveConstraintGroup = 'Linking scenario' then
-						BaseConstraints + LinkingConstraints
-						!BaseConstraints + RFNBOConstraints + LinkingConstraints
-					elseif ActiveConstraintGroup = 'Linking scenario + Scope 3' then
-						BaseScope3Constraints + LinkingConstraints
-						!BaseScope3Constraints + RFNBOConstraints + LinkingConstraints
 					endif;
 				}
 			}
@@ -2480,7 +2277,8 @@ Model IESA_Opt_Package {
 							+ sum[(t,jp), InvMat_lifeTime(t,jp,ps)*(
 							sum[it, retrofitting(it,t,ps) * CRF(t) * (retro_cost(it,t) + p_epsilon)] !Retrofitting costs (based on Excel database input). Epsilon set to 0 to save memory, can be removed later if not needed.
 							)]
-							- sum[(t), (eco_decommisioning(t,ps) - eco_decommisioning(t,ps-1)) * Salvage_value(t) * inv_cost(t,ps) * CRF(t)]  ! Recovered salvage value
+							!+sum[(t,jp),(techstock_exist(t)-decom_plannedSel(t,jp)-eco_decommisioning(t,jp))*inv_cost(t,jp)]   !Corrects for "rebuilt" capacity which is built in order to meet planned decommissioning requirement (in the case where existing stock is already early decommissioned)
+							- sum[(t), (eco_decommisioning(t,ps) - eco_decommisioning(t,ps-1)) * Salvage_value(t) * inv_cost(t,ps) * CRF(t)]
 					
 							! FOM
 							+ sum[(t), techStock(t,ps) * fom_cost(t,ps)] !Fixed costs
@@ -2488,8 +2286,6 @@ Model IESA_Opt_Package {
 							+ sum[t, tech_use(t,ps) * (vom_cost(t,ps) + p_epsilon)] !Variable costs (including fuel costs)
 							+ sum[(h,thin), tech_useHourly(h,thin,ps) * vom_interconnected_hourly(h,thin,ps)]!Electricity costs of interconnected nodes
 							+ sum[(h,t), (deltaU_CHP(h,t,ps) + deltaS_shed(h,t,ps)) * vom_cost(t,ps)] !Deviations in tech use due to flexibility
-							!CO2 tax (set to 0 in Emi02_01 if not included)
-							+ sum[t, tech_use(t,ps)*CO2_ETS_costs(t,ps)]
 							!Misc
 							+ p_epsilon * sum[(h,tf), deltaQ_DW(h,tf,ps) - deltaQ_UP(h,tf,ps)] !To avoid multiple solutions
 							+ p_epsilon * sum[(h,ts), deltaS_shed(h,ts,ps)] !To avoid multiple solutions
@@ -2504,26 +2300,6 @@ Model IESA_Opt_Package {
 				Constraints: activeConstraints;
 				Variables: activeVariables;
 				Type: LP;
-			}
-			MathematicalProgram LeastCostPlanning_Violations {
-				Objective: totalCosts;
-				Direction: minimize;
-				Constraints: activeConstraints;
-				Variables: activeVariables;
-				Type: LP;
-				ViolationPenalty: ViolationLevels;
-			}
-			Parameter ViolationLevels {
-				IndexDomain: IndexVariablesConstraints;
-				Definition: {
-					data{
-						'tech_use' : 10000 ,
-						'techStock' : 10000  ,
-						'tech_useHourly' : 100 ,
-						'tech_useDaily' : 500 ,
-						'balance_activitiesHourly' : 101 
-					};
-				}
 			}
 			Parameter p_epsilon {
 				Definition: 0;
@@ -2836,22 +2612,6 @@ Model IESA_Opt_Package {
 				option Enhanced_Long_Run_Responsiveness := 1 ;
 				option progress_time_interval := 10 ;
 				
-				! Set options to default
-				option "GUROBI 12.0".Method := 2 ;
-				option "GUROBI 12.0".Numeric_focus := 2 ; !2 default
-				option "GUROBI 12.0".Log_to_console := 1 ;
-				option "GUROBI 12.0".Output_file := 1 ;
-				option "GUROBI 12.0".Presolve := -1 ; !-1 default
-				option "GUROBI 12.0".Presolve_aggregation := 1 ;
-				option "GUROBI 12.0".Presolve_aggregation_fill := -1 ;
-				option "GUROBI 12.0".Presolve_dual := -1 ;
-				option "GUROBI 12.0".Presolve_passes := -1 ;
-				option "GUROBI 12.0".ScaleFlag := -1 ; !-1 default
-				!option "GUROBI 12.0".BarHomogenous := 1; !not default to include this, testing performance
-				!option "GUROBI 12.0".DualReduction :=0; !not default to include this, useful for numerical stability debugging
-				!option "GUROBI 12.0".Quad :=1; !NOT default, for severe numerical issues
-				!option "GUROBI 12.0".DisplayInterval := 1; ! not default, used for debugging
-				
 				! For Gurobi 12.0
 				if hoursPer_day >= 12 then 
 					! Options for 24h runs
@@ -2861,26 +2621,32 @@ Model IESA_Opt_Package {
 					elseif (SolveMethodChoice = 'Concurrent') then
 						option "GUROBI 12.0".Method := 3 ;
 					endif;
-					option "GUROBI 12.0".Numeric_focus := 3 ; !2 defai;t
+					option "GUROBI 12.0".Numeric_focus := 2 ;
 					option "GUROBI 12.0".Log_to_console := 1 ;
 					option "GUROBI 12.0".Output_file := 1 ;
-					option "GUROBI 12.0".Presolve := 1 ; !1 default (conservative)
+					option "GUROBI 12.0".Presolve := 1 ;
 					option "GUROBI 12.0".Presolve_aggregation := 2 ;
 					option "GUROBI 12.0".Presolve_aggregation_fill := 5 ;
 					option "GUROBI 12.0".Presolve_dual := 0 ;
 					option "GUROBI 12.0".Presolve_passes := 2 ;
 					option "GUROBI 12.0".Presolve_row_reduction := 1 ;
-				!	option "GUROBI 12.0".BarHomogenous := 1; !not default to include this, testing performance
-				elseif (6 <= hoursPer_day <= 8) then
+				elseif (4 <= hoursPer_day <= 8) then
 					!Options for 8h runs
-					option "GUROBI 12.0".Barrier_crossover := 0; !-1 default (automatic)
+					option "GUROBI 12.0".Barrier_crossover := 0;
 					if (SolveMethodChoice = 'Barrier') then 
 						option "GUROBI 12.0".Method := 2 ;
 					elseif (SolveMethodChoice = 'Concurrent') then
 						option "GUROBI 12.0".Method := 3 ;
 					endif;
+					option "GUROBI 12.0".Numeric_focus := 2 ;
+					option "GUROBI 12.0".Scale := 0 ;
 					option "GUROBI 12.0".Log_to_console := 1 ;
 					option "GUROBI 12.0".Output_file := 1 ;
+					option "GUROBI 12.0".Presolve := 1 ;
+					option "GUROBI 12.0".Presolve_aggregation := 2 ;
+					option "GUROBI 12.0".Presolve_aggregation_fill := 5 ;
+					option "GUROBI 12.0".Presolve_dual := 0 ;
+					option "GUROBI 12.0".Presolve_passes := 3 ;
 					option "GUROBI 12.0".Presolve_row_reduction := 0 ;
 				else
 					option "GUROBI 12.0".Barrier_crossover := 0; 
@@ -2889,10 +2655,17 @@ Model IESA_Opt_Package {
 					elseif (SolveMethodChoice = 'Concurrent') then
 						option "GUROBI 12.0".Method := 3 ;
 					endif;
+					! Defaults
+					option "GUROBI 12.0".Numeric_focus := 0 ;
+					option "GUROBI 12.0".Scale := -1 ;
 					option "GUROBI 12.0".Log_to_console := 1 ;
 					option "GUROBI 12.0".Output_file := 1 ;
+					option "GUROBI 12.0".Presolve := -1 ;
+					option "GUROBI 12.0".Presolve_aggregation := 1 ;
+					option "GUROBI 12.0".Presolve_aggregation_fill := -1 ;
+					option "GUROBI 12.0".Presolve_dual := -1 ;
+					option "GUROBI 12.0".Presolve_passes := -1 ;
 					option "GUROBI 12.0".Presolve_row_reduction := 0 ;
-				
 				endif;
 				
 				
@@ -2955,18 +2728,6 @@ Model IESA_Opt_Package {
 					option Enhanced_Long_Run_Responsiveness := 1 ;
 					option progress_time_interval := 10 ;
 					
-					! Set options to default
-					option "GUROBI 12.0".Method := 2 ;
-					option "GUROBI 12.0".Numeric_focus := 0 ;
-					option "GUROBI 12.0".Log_to_console := 1 ;
-					option "GUROBI 12.0".Output_file := 1 ;
-					option "GUROBI 12.0".Presolve := -1 ;
-					option "GUROBI 12.0".Presolve_aggregation := 1 ;
-					option "GUROBI 12.0".Presolve_aggregation_fill := -1 ;
-					option "GUROBI 12.0".Presolve_dual := -1 ;
-					option "GUROBI 12.0".Presolve_passes := -1 ;
-					option "GUROBI 12.0".Scale := -1 ;
-					
 					option "GUROBI 12.0".Barrier_crossover := 0;
 					option "GUROBI 12.0".Method := 2 ;
 					
@@ -3015,12 +2776,7 @@ Model IESA_Opt_Package {
 					
 					StatusMessage("ST... Generating the transition GMP for periods: " + SetAsString(periods_solve));
 					! Create a solver session for GenMathProgram, which will create an element in the set AllSolverSessions, and assign the newly created element to the element parameter session.
-					if ShowViolations = 'Yes' then
-						GMP_planning := GMP::Instance::Generate(LeastCostPlanning_Violations);
-					else
-						GMP_planning := GMP::Instance::Generate(LeastCostPlanning);
-					endif;
-					
+					GMP_planning := GMP::Instance::Generate(LeastCostPlanning);
 					for IndexGeneratedMathematicalPrograms do
 						MemoryUseMPs(IndexGeneratedMathematicalPrograms) := GMP::Instance::GetMemoryUsed(IndexGeneratedMathematicalPrograms);
 						endfor;
@@ -3066,17 +2822,15 @@ Model IESA_Opt_Package {
 					StechStock(t,pss):=techStock(t,pss);
 					Ptotal_costs:=totalCosts;
 					
-					if ShowViolations = 'Yes' then ViolationFinder; endif;
-					
 					if GMP::Solution::GetProgramStatus(GMP_planning,1) = 'Optimal' then
 						!Extract the prices
 						yearly_prices(as,p):=balance_activities(as,p).ShadowPrice;
 						yearly_prices(as,pss):=yearly_prices(as,pss)/social_discount_factor(pss);
 						Pyearly_prices(as,pss) := yearly_prices(as,pss); 
-						CO2_prices(acf,p):= balance_activities_emissionsFix(acf,p).ShadowPrice;
-						CO2_prices(acf,pss):= CO2_prices(acf,pss)/social_discount_factor(pss);
-						PCO2_prices(acf,pss) := CO2_prices(acf,pss);
-						CO2_price_single(n,p) := balance_activities_emissiontarget(n,p).ShadowPrice;
+						CO2_prices(aer,p):= balance_activities_emissionsFix(aer,p).ShadowPrice;
+						CO2_prices(aer,pss):= CO2_prices(aer,pss)/social_discount_factor(pss);
+						PCO2_prices(aer,pss) := CO2_prices(aer,pss);
+						CO2_price_single(n,p) := balance_activities_emissiontarget_inclScope3(n,p).ShadowPrice;
 						CO2_price_single(n,pss) := CO2_price_single(n,pss)/social_discount_factor(pss);
 					
 						if (HourlyReportValue = 'yes') then
@@ -3237,9 +2991,9 @@ Model IESA_Opt_Package {
 							yearly_prices(as,p):=balance_activities(as,p).ShadowPrice;
 							yearly_prices(as,pss):=yearly_prices(as,pss)/social_discount_factor(pss);
 							Pyearly_prices(as,pss) := yearly_prices(as,pss); 
-							CO2_prices(acf,p):= balance_activities_emissionsFix(acf,p).ShadowPrice;
-							CO2_prices(acf,pss):= CO2_prices(acf,pss)/social_discount_factor(pss);
-							PCO2_prices(acf,pss) := CO2_prices(acf,pss);
+							CO2_prices(aer,p):= balance_activities_emissionsFix(aer,p).ShadowPrice;
+							CO2_prices(aer,pss):= CO2_prices(aer,pss)/social_discount_factor(pss);
+							PCO2_prices(aer,pss) := CO2_prices(aer,pss);
 							CO2_price_single(n,p) := balance_activities_emissiontarget(n,p).ShadowPrice;
 							CO2_price_single(n,pss) := CO2_price_single(n,pss)/social_discount_factor(pss);
 							!Save intrayear prices (shadow prices)
@@ -3645,48 +3399,7 @@ Model IESA_Opt_Package {
 		}
 	}
 	Section Post_Processing {
-		Section Violations {
-			DeclarationSection ViolationParms {
-				Set AllViolations {
-					SubsetOf: AllVariablesConstraints;
-				}
-				Parameter techStock_violation {
-					IndexDomain: (t,p);
-					Definition: {
-						techStock(t,p).Violation ;
-					}
-				}
-				Parameter tech_use_violation {
-					IndexDomain: (t,p);
-					Definition: {
-						tech_use(t,p).Violation ;
-					}
-				}
-				Parameter tech_useDaily_violation {
-					IndexDomain: (d,td,p);
-					Definition: {
-						tech_useDaily(d,td,p).Violation ;
-					}
-				}
-				Parameter tech_useHourly_violation {
-					IndexDomain: (h,thh,p);
-					Definition: {
-						tech_useHourly(h,thh,p).Violation ;
-					}
-				}
-			}
-			Procedure ViolationFinder {
-				Body: {
-					for ( IndexVariablesConstraints | card(IndexVariablesConstraints, 'Violation') ) do
-					
-						AllViolations += StringToElement(AllViolations,IndexVariablesConstraints,1) ; 
-					
-					endfor;
-				}
-			}
-		}
 		DeclarationSection Kira_output {
-			Parameter test_KW;
 			Parameter Primary {
 				IndexDomain: (nn,el,ps);
 				Definition: {
@@ -4013,7 +3726,7 @@ Model IESA_Opt_Package {
 				InitialData: 0;
 			}
 			Parameter CO2_prices {
-				IndexDomain: (acf,p);
+				IndexDomain: (aer,p);
 				InitialData: 0;
 			}
 			Parameter CO2_price_single {
@@ -4033,8 +3746,8 @@ Model IESA_Opt_Package {
 				}
 			}
 			Parameter shadow_CO2Prices {
-				IndexDomain: (nn,acf,p);
-				Definition: sum[n, (namePer_node(nodePer_act(acf))=nn)*CO2_prices(acf,p)];
+				IndexDomain: (nn,aer,p);
+				Definition: sum[n, (namePer_node(nodePer_act(aer))=nn)*CO2_prices(aer,p)];
 			}
 		}
 		DeclarationSection Energy_Costs {
@@ -4054,8 +3767,7 @@ Model IESA_Opt_Package {
 				SubsetOf: activities_solve;
 				Index: ass, iass, jass;
 				Definition: {
-					{as | sum[(tb,pnz), (activityPer_tech(tb)=as)*Ptech_useNet(tb,pnz)]=0} 
-					+ {as | as='Mixed Plastic Waste'} !Mixed plastic waste added by Kira - this is because one sorting process is given on an input basis
+					{as | sum[(tb,pnz), (activityPer_tech(tb)=as)*Ptech_useNet(tb,pnz)]=0}
 				}
 			}
 			Parameter TechExclussiveness {
@@ -4066,7 +3778,7 @@ Model IESA_Opt_Package {
 				}
 			}
 			Parameter EnergyCosts_yearly {
-				IndexDomain: (as,p);
+				IndexDomain: (ae,p);
 				InitialData: 0;
 			}
 			Parameter EnergyCosts_daily {
@@ -4078,7 +3790,7 @@ Model IESA_Opt_Package {
 				InitialData: 0;
 			}
 			Parameter EnergyCosts {
-				IndexDomain: (h,as,p);
+				IndexDomain: (h,ae,p);
 				InitialData: 0;
 			}
 			Parameter FuelCosts {
@@ -4088,10 +3800,6 @@ Model IESA_Opt_Package {
 			Parameter EnergyCosts_mean {
 				IndexDomain: (ae,p);
 				Definition: sum[h, EnergyCosts(h,ae,p)]/card(hours);
-			}
-			Parameter EnergyCosts_mean_secondary {
-				IndexDomain: (ass,p);
-				Definition: sum[h, EnergyCosts_yearly(ass,p)]/card(hours);
 			}
 			Parameter EnergyCostsVariability {
 				IndexDomain: (h,ae,p);
@@ -4221,10 +3929,6 @@ Model IESA_Opt_Package {
 			Parameter EnergyCosts_node {
 				IndexDomain: (nn,ae,p);
 				Definition: (namePer_node(nodePer_act(ae))=nn)*EnergyCosts_mean(ae,p);
-			}
-			Parameter EnergyCosts_node_secondary {
-				IndexDomain: (nn,ass,p);
-				Definition: (namePer_node(nodePer_act(ass))=nn)*EnergyCosts_mean_secondary(ass,p);
 			}
 			Parameter EnergyCosts_nodeH {
 				IndexDomain: (nn,h,ah,p);
@@ -4796,10 +4500,7 @@ Model IESA_Opt_Package {
 			}
 			Parameter emissions_act {
 				IndexDomain: (nn,z,as,aer,p);
-				Definition: {
-					sum[tb, (namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*(activityPer_tech(tb)=as)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)]
-					!sum[tb, (namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*(activityPer_tech(tb)=as)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)*IEM_node(nodePer_techBal(tb))]
-				}
+				Definition: sum[tb, (namePer_node(nodePer_techBal(tb))=nn)*(tech_sector(tb)=z)*(activityPer_tech(tb)=as)*Ptech_useNet(tb,p)*activity_balances(tb,aer,p)*IEM_node(nodePer_techBal(tb))];
 			}
 			Parameter emissions_tech {
 				IndexDomain: (nn,z,as,tb,tn,aer,p);
@@ -4948,11 +4649,9 @@ Model IESA_Opt_Package {
 				IndexDomain: (nn,as,tob,tb,tn,p);
 				Definition: {
 					if(tob='supply') then
-						sum[n, (namePer_node(n)=nn)*supplyAct_tech(n,as,tb,tn,p)]
-						!sum[n, (namePer_node(n)=nn)*supplyAct_tech(n,as,tb,tn,p)*IEM_node(n)]
+						sum[n, (namePer_node(n)=nn)*supplyAct_tech(n,as,tb,tn,p)*IEM_node(n)]
 					elseif(tob='demand') then
-						sum[n, (namePer_node(n)=nn)*demandAct_tech(n,as,tb,tn,p)]
-						!sum[n, (namePer_node(n)=nn)*demandAct_tech(n,as,tb,tn,p)*IEM_node(n)]
+						sum[n, (namePer_node(n)=nn)*demandAct_tech(n,as,tb,tn,p)*IEM_node(n)]
 					endif
 				}
 			}
@@ -4960,11 +4659,9 @@ Model IESA_Opt_Package {
 				IndexDomain: (nn,as,tob,tb,tn,p);
 				Definition: {
 					if(tob='supply') then
-						sum[n, (namePer_node(n)=nn)*(tech_name(tb)=tn)*supplyAct_tech(n,as,tb,tn,p)]
-						!sum[n, (namePer_node(n)=nn)*(tech_name(tb)=tn)*supplyAct_tech(n,as,tb,tn,p)*IEM_node(n)]
+						sum[n, (namePer_node(n)=nn)*(tech_name(tb)=tn)*supplyAct_tech(n,as,tb,tn,p)*IEM_node(n)]
 					elseif(tob='demand') then
-						sum[n, (namePer_node(n)=nn)*(tech_name(tb)=tn)*demandAct_tech(n,as,tb,tn,p)]
-						!sum[n, (namePer_node(n)=nn)*(tech_name(tb)=tn)*demandAct_tech(n,as,tb,tn,p)*IEM_node(n)]
+						sum[n, (namePer_node(n)=nn)*(tech_name(tb)=tn)*demandAct_tech(n,as,tb,tn,p)*IEM_node(n)]
 					endif
 				}
 			}
@@ -5720,7 +5417,7 @@ Model IESA_Opt_Package {
 				InitialData: 0;
 			}
 			Parameter Remissions_sec {
-				IndexDomain: (nn,z,aer,pnz);
+				IndexDomain: (nn,z,ac,pnz);
 				InitialData: 0;
 			}
 			Parameter RsupdemAct_tech {
@@ -5826,10 +5523,6 @@ Model IESA_Opt_Package {
 				IndexDomain: (nn,ae,pnz);
 				InitialData: 0;
 			}
-			Parameter REnergyCosts_node_secondary {
-				IndexDomain: (nn,ass,pnz);
-				InitialData: 0;
-			}
 			Parameter Rresidual_load {
 				IndexDomain: (nn,h,torl,pnz);
 				InitialData: 0;
@@ -5839,7 +5532,7 @@ Model IESA_Opt_Package {
 				InitialData: 0;
 			}
 			Parameter Remissions_act {
-				IndexDomain: (nn,z,as,aer,pnz);
+				IndexDomain: (nn,z,as,ac,pnz);
 				InitialData: 0;
 			}
 			Parameter Rflexibility_volumesAct {
@@ -5883,11 +5576,7 @@ Model IESA_Opt_Package {
 				InitialData: 0;
 			}
 			Parameter Rshadow_CO2Prices {
-				IndexDomain: (nn,acf,pnz);
-				InitialData: 0;
-			}
-			Parameter Rshadow_CO2Prices_single {
-				IndexDomain: (n,p);
+				IndexDomain: (nn,ac,pnz);
 				InitialData: 0;
 			}
 		}
@@ -5942,20 +5631,12 @@ Model IESA_Opt_Package {
 							+sum[aer, -activity_balances(tb,aer,pnz)*EmissionCosts(aer,pnz)*(activityPer_tech(tb)<>aer)*TechExclussiveness(tb,pnz)]; !For emission costs
 				
 						!Obtain yearly energy costs for yearly energy activities
-						EnergyCosts_yearly(ay,pnz):= max(h,sum[tb, Ptech_useNet(tb,pnz)*(Ptech_useNet(tb,pnz)>1e-2)*(activityPer_tech(tb)=ay)*techCosts_voc(h,tb,pnz)]
-						/(sum[tb,(activityPer_tech(tb)=ay)*Ptech_useNet(tb,pnz)]+1e-10));
-				
-						!original calculation - yearly average, replaced by max annual cost, similar to hourly calculation
-						!EnergyCosts_yearly(ay,pnz) := (sum[tb, (activityPer_tech(tb)=ay)*Ptech_useNet(tb,pnz)]>1e-2)*sum[(tb,h), 
-						!	(activityPer_tech(tb)=ay)*Ptech_useNet(tb,pnz)*techCosts_voc(h,tb,pnz)]/(sum[tb, (activityPer_tech(tb)=ay)*Ptech_useNet(tb,pnz)+1e-10]*card(hours));
+						EnergyCosts_yearly(ay,pnz) := (sum[tb, (activityPer_tech(tb)=ay)*Ptech_useNet(tb,pnz)]>1e-2)*sum[(tb,h), 
+							(activityPer_tech(tb)=ay)*Ptech_useNet(tb,pnz)*techCosts_voc(h,tb,pnz)]/(sum[tb, (activityPer_tech(tb)=ay)*Ptech_useNet(tb,pnz)+1e-10]*card(hours));
 				
 						!Obtain daily energy costs for daily energy activities
-						EnergyCosts_daily(d,ad,pnz):=max(h,(dayPer_hour(h)=d)*sum[tb,Ptech_useDailyNet(d,tb,pnz)*(Ptech_useDailyNet(d,tb,pnz)>1e-7)*(activityPer_tech(tb)=ad)*techCosts_voc(h,tb,pnz)]
-						/(sum[tb,(activityPer_tech(tb)=ad)*Ptech_useDailyNet(d,tb,pnz)]+1e-10));
-				
-						!original calculation - daily average, replaced by max daily cost, similar to hourly calculation
-						!EnergyCosts_daily(d,ad,pnz) := sum[(tb,h), Ptech_useDailyNet(d,tb,pnz)*(Ptech_useDailyNet(d,tb,pnz)>1e-7)*(activityPer_tech(tb)=ad)*(dayPer_hour(h)=d)/hoursPer_day*techCosts_voc(h,tb,pnz)]
-						!/sum[tb, Ptech_useDailyNet(d,tb,pnz)*(activityPer_tech(tb)=ad)+1e-20];		
+						EnergyCosts_daily(d,ad,pnz) := sum[(tb,h), Ptech_useDailyNet(d,tb,pnz)*(activityPer_tech(tb)=ad)*(dayPer_hour(h)=d)/hoursPer_day*techCosts_voc(h,tb,pnz)]
+						/sum[tb, Ptech_useDailyNet(d,tb,pnz)*(activityPer_tech(tb)=ad)+1e-20];
 				
 						!Obtain hourly energy costs for hourly energy activities
 						EnergyCosts_hourly(h,ah,pnz) := max(tb,(Ptech_useHourlyNet(h,tb,pnz)>0.001)*(activityPer_tech(tb)=ah)*techCosts_voc(h,tb,pnz));
@@ -5964,10 +5645,8 @@ Model IESA_Opt_Package {
 						EnergyCosts_yearly(ass,pnz) := (sum[tb,(activity_balances(tb,ass,pnz)>0)*Ptech_useNet(tb,pnz)]>1e-2)*sum[(tb,h), 
 							(activity_balances(tb,ass,pnz)>0)*Ptech_useNet(tb,pnz)*techCosts_voc(h,tb,pnz)]/(sum[tb, (activity_balances(tb,ass,pnz)>0)*Ptech_useNet(tb,pnz)+1e-10]*card(hours));
 				
-				
 						IterCounter := IterCounter + 1;
 					endwhile;
-				!	EnergyCosts(h,as,pnz) := EnergyCosts_yearly(ae,pnz) + EnergyCosts_daily(dayPer_hour(h),ae,pnz) + EnergyCosts_hourly(h,ae,pnz) + EnergyCosts_yearly(ass,pnz);
 					EnergyCosts(h,ae,pnz) := EnergyCosts_yearly(ae,pnz) + EnergyCosts_daily(dayPer_hour(h),ae,pnz) + EnergyCosts_hourly(h,ae,pnz);
 				elseif (EnergyPricesChoice = 'Shadow Prices') then
 					EnergyCosts(h,ae,pnz) := yearly_prices(ae,pnz) + daily_prices(dayPer_hour(h),ae,pnz) + hourly_prices(h,ae,pnz);
@@ -6104,13 +5783,13 @@ Model IESA_Opt_Package {
 				StatusMessage("Post-processing parameters. . . " );
 				!Delete the reporting parameters
 				empty RSystemCosts_n, RSystemCosts_sec_n, RSectoralConfiguration_stock, RSectoralConfiguration_use, RPower_stock, RPower_gen, RXC_stock, RXC_use;
-				empty Remissions_all,  Remissions_sec, RsupdemAct_tech, RfinalEnergy_matrix, RfinalEnergy_act, RprimaryBalance, Rsankey_flows, REnergyCosts_node, REnergyCosts_node_secondary;
+				empty Remissions_all,  Remissions_sec, RsupdemAct_tech, RfinalEnergy_matrix, RfinalEnergy_act, RprimaryBalance, Rsankey_flows, REnergyCosts_node;
 				empty RPower_dispatch, RPowerInfo_act, RXCinfo_act, RloadProfiles_H, RflexProfiles_H, RloadProfiles_D, RfinProfiles_D, Rprofiles3D;
 				empty Rfinal_decomposition, RcurtailmentRES, Relectricity_parameters, Rflexibility_volumes, Rkey_indicators, RLCOE, RSectoralCosts_cascade;
 				empty RSystemCosts_sec_tot, Rprimary_renewable, REnergyCosts_hourly, REnergyCosts_nodeD, RPlanningDecissions_tech, RintTransport_indicators;
 				empty REnergyCosts_node, Rresidual_load, RSystemCosts_act_n, Remissions_act, Rflexibility_volumesAct, RfinalEnergy_matrixAct, Rdecomposition_resLoad;
 				empty Rdecomposition_resLoadY, Rflexibility_volumesTech, RenergyUse_act, Remissions_tech, RLCOP_secE, RLCOP_act, Rshadow_energyPrices;
-				empty Rshadow_CO2Prices, Rshadow_CO2prices_single;
+				empty Rshadow_CO2Prices;
 				
 				!Assign post-processed parameters
 				RSystemCosts_n(nn,toc,pnz) := SystemCosts_n(nn,toc,pnz);
@@ -6142,7 +5821,6 @@ Model IESA_Opt_Package {
 				RXCinfo_act(iahee,ahee,topi,tb,pnz) := XCinfo_act(iahee,ahee,topi,tb,pnz);
 				RintTransport_indicators(toitr,pnz) := intTransport_indicators(toitr,pnz);
 				REnergyCosts_node(nn,ae,pnz) := EnergyCosts_node(nn,ae,pnz);
-				REnergyCosts_node_secondary(nn,ass,pnz) := EnergyCosts_node_secondary(nn,ass,pnz);
 				RSystemCosts_act_n(nn,z,as,tots,toc,pnz) := SystemCosts_act_n(nn,z,as,tots,toc,pnz);
 				Remissions_act(nn,z,as,aer,pnz) := emissions_act(nn,z,as,aer,pnz);
 				Rflexibility_volumesAct(nn,z,as,tox,pnz) := flexibility_volumesAct(nn,z,as,tox,pnz);
@@ -6153,8 +5831,7 @@ Model IESA_Opt_Package {
 				RLCOP_secE(nn,z,tots,toc,pnz) := LCOP_secE(nn,z,tots,toc,pnz);
 				RLCOP_act(nn,z,as,tots,toc,pnz) := LCOP_act(nn,z,as,tots,toc,pnz);
 				Rshadow_energyPrices(nn,ae,pnz) := shadow_energyPrices(nn,ae,pnz);
-				Rshadow_CO2Prices(nn,acf,pnz) := shadow_CO2Prices(nn,acf,pnz);
-				Rshadow_CO2Prices_single(n,p):=CO2_price_single(n,p);
+				Rshadow_CO2Prices(nn,aer,pnz) := shadow_CO2Prices(nn,aer,pnz);
 				
 				!If hourly reports are required
 				if (HourlyReportValue = 'yes') then
@@ -6261,7 +5938,6 @@ Model IESA_Opt_Package {
 				RXCinfo_act(iahee,ahee,topi,tb,pnz) := round(RXCinfo_act(iahee,ahee,topi,tb,pnz),2);
 				RintTransport_indicators(toitr,pnz) := round(RintTransport_indicators(toitr,pnz),2);
 				REnergyCosts_node(nn,ae,pnz) := round(REnergyCosts_node(nn,ae,pnz),2);
-				REnergyCosts_node_secondary(nn,ass,pnz) := round(REnergyCosts_node_secondary(nn,ass,pnz),2);
 				RSystemCosts_act_n(nn,z,as,tots,toc,pnz) := round(RSystemCosts_act_n(nn,z,as,tots,toc,pnz),2);
 				Remissions_act(nn,z,as,aer,pnz) := round(Remissions_act(nn,z,as,aer,pnz),2);
 				Rflexibility_volumesAct(nn,z,as,tox,pnz) := round(Rflexibility_volumesAct(nn,z,as,tox,pnz),2);
@@ -6273,8 +5949,7 @@ Model IESA_Opt_Package {
 				RLCOP_secE(nn,z,tots,toc,pnz) := round(RLCOP_secE(nn,z,tots,toc,pnz),2);
 				RLCOP_act(nn,z,as,tots,toc,pnz) := round(RLCOP_act(nn,z,as,tots,toc,pnz),2);
 				Rshadow_energyPrices(nn,ae,pnz) := round(Rshadow_energyPrices(nn,ae,pnz),2);
-				Rshadow_CO2Prices(nn,acf,pnz) := round(Rshadow_CO2Prices(nn,acf,pnz),2);
-				Rshadow_CO2Prices_single(n,p):=round(Rshadow_CO2Prices_single(n,p),2);
+				Rshadow_CO2Prices(nn,aer,pnz) := round(Rshadow_CO2Prices(nn,aer,pnz),2);
 				
 				!If hourly reports are required
 				if (HourlyReportValue = 'yes') then
@@ -6441,6 +6116,12 @@ Model IESA_Opt_Package {
 					{'yes','no'}
 				}
 			}
+			Set YesNoOptions {
+				Index: opo;
+				Definition: {
+					{'yes','no'}
+				}
+			}
 			Set DataCasesSet;
 			Set InputFilesSet {
 				Index: fs, ifs, jfs;
@@ -6455,22 +6136,22 @@ Model IESA_Opt_Package {
 				SubsetOf: InputFilesSetBatch;
 			}
 			Set ConstraintGroups {
-				Definition: data {'Base' ,'ADAPT','TRANSFORM','ADAPT + bunker aviation & navigation policy','Base + DMI' , 'Base + DMI without emissions', 'Base + Bunkers in a single constraint','ADAPT with bunkers in single constraint','Base + RFNBO targets','Linking scenario', 'Linking scenario + Scope 3'};
+				Definition: data {'Base' ,'ADAPT','TRANSFORM'};
 			}
 			ElementParameter OutputFolderValue {
 				Range: OutputFolderOptions;
 				InitialData: 'automatic';
 			}
 			ElementParameter PricesValue {
-				Range: YesNo;
+				Range: YesNoOptions;
 				InitialData: 'no';
 			}
 			ElementParameter ScaleValue {
-				Range: YesNo;
+				Range: YesNoOptions;
 				InitialData: 'yes';
 			}
 			ElementParameter LinearPresolveValue {
-				Range: YesNo;
+				Range: YesNoOptions;
 				InitialData: 'yes';
 			}
 			ElementParameter DataCaseLocation {
@@ -6483,15 +6164,15 @@ Model IESA_Opt_Package {
 				Range: InputFilesSetBatch;
 			}
 			ElementParameter crossover_enabling {
-				Range: YesNo;
+				Range: YesNoOptions;
 				InitialData: 'no';
 			}
 			ElementParameter HourlyReportValue {
-				Range: YesNo;
+				Range: YesNoOptions;
 				InitialData: 'no';
 			}
 			ElementParameter SaveCaseValue {
-				Range: YesNo;
+				Range: YesNoOptions;
 				InitialData: 'no';
 			}
 			StringParameter OutputFolderName;
@@ -6513,22 +6194,12 @@ Model IESA_Opt_Package {
 				InitialData: 'GUROBI 12.0';
 			}
 			ElementParameter ShowProgress {
-				Range: YesNo;
+				Range: YesNoOptions;
 				InitialData: 'yes';
 			}
 			ElementParameter ActiveConstraintGroup {
 				Range: ConstraintGroups;
 				InitialData: 'Base';
-			}
-			ElementParameter ShowViolations {
-				Range: YesNo;
-				InitialData: 'No';
-			}
-			Parameter Violation_Hide {
-				Range: binary;
-				Definition: {
-					if ShowViolations = 'Yes' then 0 else 1 endif;
-				}
 			}
 			Parameter CPUCores {
 				Range: {
@@ -8543,8 +8214,6 @@ Model IESA_Opt_Package {
 					empty namePer_node, IEM_node, IEM_sector, is_renewable, labelPer_act, actChange_maxOrig, techChange_max, phs_capacity, phs_storage ,phs_losses;
 					empty CHP_prodOrig, CHP_fuelOrig, CHP_eta, CHP_range, CHPdev_use, CHPdev_PtoH, shed_capacity_percentage, shed_volume, shed_range, hybrid_substitute, hybrid_ratio;
 					empty cumulative_CO2storage;
-					
-					AllViolations := {} ;
 				}
 			}
 			Procedure BuildTechNominals {
@@ -8584,9 +8253,7 @@ Model IESA_Opt_Package {
 						axll::CreateSheet(SheetName:"FinalEnergy_Matrix");
 						axll::CreateSheet(SheetName:"EnergyUse_Activities");
 						axll::CreateSheet(SheetName:"EnergyCosts");
-						axll::CreateSheet(SheetName:"EnergyCosts_secondary");
 						axll::CreateSheet(SheetName:"ShadowEnergyPrices");	
-						axll::CreateSheet(SheetName:"ShadowGHGPrices");
 						axll::CreateSheet(SheetName:"ShadowCO2Prices");
 						axll::CreateSheet(SheetName:"Primary_Balance");
 						axll::CreateSheet(SheetName:"Primary_Renewable");
@@ -9039,28 +8706,6 @@ Model IESA_Opt_Package {
 						Cell           		:  "B1"
 					);
 					
-					!Write the table: Energy Costs Secondary (node name, activity, period) (note from Kira: these are average hourly energy costs on an annual basis)=================================================================
-					axll::SelectSheet("EnergyCosts_secondary");
-					axll::ClearActiveSheet;	
-					axll::WriteTable(
-					  IdentifierReference : REnergyCosts_node_secondary(nn,ass,pnz),
-					  RowHeaderRange : "A2:B5000",
-					  ColumnHeaderRange : "C1:ZZ1",
-					  DataRange : "C2:ZZ5000",
-					  allowRangeOverflow : 1,
-					  writeZeros : 1,
-					);
-					!Write the parameter: Node
-					axll:: WriteSingleValue(
-						ScalarReference 	:  node_string,
-						Cell           		:  "A1"
-					);
-					!Write the parameter: Type
-					axll:: WriteSingleValue(
-						ScalarReference 	:  act_string,
-						Cell           		:  "B1"
-					);
-					
 					!Write the table: Shadow Energy Prices (node name, activity, period)=================================================================
 					axll::SelectSheet("ShadowEnergyPrices");
 					axll::ClearActiveSheet;	
@@ -9083,11 +8728,11 @@ Model IESA_Opt_Package {
 						Cell           		:  "B1"
 					);
 					
-					!Write the table: Shadow GHG Prices (node name, activity, period)=================================================================
-					axll::SelectSheet("ShadowGHGPrices");
+					!Write the table: Shadow CO2 Prices (node name, activity, period)=================================================================
+					axll::SelectSheet("ShadowCO2Prices");
 					axll::ClearActiveSheet;	
 					axll::WriteTable(
-					  IdentifierReference : Rshadow_CO2Prices(nn,acf,pnz),
+					  IdentifierReference : Rshadow_CO2Prices(nn,aer,pnz),
 					  RowHeaderRange : "A2:B5000",
 					  ColumnHeaderRange : "C1:ZZ1",
 					  DataRange : "C2:ZZ5000",
@@ -9104,24 +8749,6 @@ Model IESA_Opt_Package {
 						ScalarReference 	:  act_string,
 						Cell           		:  "B1"
 					);
-					
-					!Write the table: Shadow CO2 Prices (node name, activity, period)=================================================================
-					axll::SelectSheet("ShadowCO2Prices");
-					axll::ClearActiveSheet;	
-					axll::WriteTable(
-					  IdentifierReference : Rshadow_CO2Prices_single(n,p),
-					  RowHeaderRange : "A2:A5000",
-					  ColumnHeaderRange : "B1:ZZ1",
-					  DataRange : "B2:ZZ5000",
-					  allowRangeOverflow : 1,
-					  writeZeros : 1,
-					);
-					!Write the parameter: Node
-					axll:: WriteSingleValue(
-						ScalarReference 	:  node_string,
-						Cell           		:  "A1"
-					);
-					
 					
 					!Write the table: Primary Balance (node name, type of primary, energy label,  period)===========================================================
 					axll::SelectSheet("Primary_Balance");
@@ -10502,57 +10129,6 @@ Model IESA_Opt_Package {
 		}
 	}
 	Section ProjectSpecific {
-		DeclarationSection Linking {
-			Parameter CO2_ETS_costs {
-				IndexDomain: (tb,ps);
-				Definition: {
-					if activity_balances(tb,'CO2 Air ETS',ps)>0
-						then activity_balances(tb,'CO2 Air ETS',ps)*vom_cost('Emi02_01',ps)
-						else 0
-					
-					endif;
-				}
-			}
-			Constraint EED_FinalEnergy_2030 {
-				IndexDomain: ps | ps>='2030';
-				Definition: {
-					sum[(tb,ae) | ((nodePer_techBal(tb)='NL')*(tech_category(tb)='Final')*(activityPer_tech(tb)<>'Bunker Navigation')*(activityType_act(activityPer_tech(tb))='Driver'))<>0,
-						(-1)
-						*
-						(tech_use(tb,ps)+sum[h, deltaU_CHP(h,tb,ps)]+sum[h, deltaS_shed(h,tb,ps)])
-						*(activity_balances(tb,ae,ps) - feedstockUse_tech(tb,ae))				! final energy minus feedstock
-						+sum[h, (PdeltaQ_UP(h,tb,ps)+PdeltaQ_DW(h,tb,ps))]*dQ_hourly(tb,ae)			!Impact of flexibility in hourly activities
-						+sum[h, PdeltaP_CHP(h,tb,ps)]*dP_electricity(tb,ae)					!Impact in power of power output ratio deviation of CHp
-						+sum[h, -CHP_eta(tb)*PdeltaP_CHP(h,tb,ps)/CHP_eps(tb,ps)]*dP_heat(tb,ae)		!Impact in heat of power output ratio deviation of CHp
-					] 
-					
-					!Final energy use for industrial material conversion processes
-					+ sum[(tb,ae) | ((nodePer_techBal(tb)='NL')*(tech_category(tb)='Conversion')*(tech_sector(tb)='Industry')*(activityType_act(activityPer_tech(tb))='Driver'))<>0,
-						(-1)
-						*
-						(tech_use(tb,ps)+sum[h, deltaU_CHP(h,tb,ps)]+sum[h, deltaS_shed(h,tb,ps)])
-						*(activity_balances(tb,ae,ps) - feedstockUse_tech(tb,ae))				! final energy minus feedstock
-						+sum[h, (PdeltaQ_UP(h,tb,ps)+PdeltaQ_DW(h,tb,ps))]*dQ_hourly(tb,ae)			!Impact of flexibility in hourly activities
-						+sum[h, PdeltaP_CHP(h,tb,ps)]*dP_electricity(tb,ae)					!Impact in power of power output ratio deviation of CHp
-						+sum[h, -CHP_eta(tb)*PdeltaP_CHP(h,tb,ps)/CHP_eps(tb,ps)]*dP_heat(tb,ae)		!Impact in heat of power output ratio deviation of CHp
-					]
-					
-					
-					!CCS (DACs)
-					+ sum[(tb,ae) | ((nodePer_techBal(tb)='NL')*(tech_category(tb)='Conversion')*(tech_sector(tb)='Industry')*(activityType_act(activityPer_tech(tb))='Driver'))<>0,
-						(-1)
-						*
-						(tech_use(tb,ps)+sum[h, deltaU_CHP(h,tb,ps)]+sum[h, deltaS_shed(h,tb,ps)])
-						*(activity_balances(tb,ae,ps) - feedstockUse_tech(tb,ae))				! final energy minus feedstock
-						+sum[h, (PdeltaQ_UP(h,tb,ps)+PdeltaQ_DW(h,tb,ps))]*dQ_hourly(tb,ae)			!Impact of flexibility in hourly activities
-						+sum[h, PdeltaP_CHP(h,tb,ps)]*dP_electricity(tb,ae)					!Impact in power of power output ratio deviation of CHp
-						+sum[h, -CHP_eta(tb)*PdeltaP_CHP(h,tb,ps)/CHP_eps(tb,ps)]*dP_heat(tb,ae)		!Impact in heat of power output ratio deviation of CHp
-					]
-					
-					<= 1609  ! EED target by 2030
-				}
-			}
-		}
 		DeclarationSection Nuclear {
 			Constraint MinLoad {
 				IndexDomain: (h,thh,ps) | (StringOccurrences(tech_name(thh),'Nuclear')>=1);
@@ -10570,16 +10146,28 @@ Model IESA_Opt_Package {
 				}
 			}
 		}
-		DeclarationSection Adapt_Sena {
-			Parameter test {
-				IndexDomain: p;
+		DeclarationSection ADAPT_Sena {
+			Constraint Adapt_ReFuelEU_Avi {
+				IndexDomain: ps | ps='2050';
 				Definition: {
-					sum[(atb,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
-						(tech_use(t,p)+				! Reference activity balance
-							sum[h, deltaU_CHP(h,t,p)]+		!Impact of use deviation of CHPs
-							sum[h, deltaS_shed(h,t,p)])*		!Impact of shedding load
-						activity_balances(t,atb,p)
-					]
+					!Sum of all emissions from Bunker Aviation sector
+					
+					sum[(atb,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+						(tech_use(t,ps)+                                                      ! Reference activity balance
+						sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+						sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+						activity_balances(t,atb,ps)
+						] 
+					
+					!minus sum of all used CO2 credits for the sector
+					-
+					sum[(as,t),(tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+						(tech_use(t,ps)+                                                      ! Reference activity balance
+						sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+						sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+						activity_balances(t,'Renewable CO2 credit',ps)
+						] 
+					<= 5.5;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi_R {
@@ -10646,195 +10234,126 @@ Model IESA_Opt_Package {
 			Constraint Adapt_SectoTarget_emi30_BunkerNav {
 				IndexDomain: ps | ps='2030';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
-						(tech_use(t,ps)+				! Reference activity balance
-							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
-							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
-						activity_balances(t,ac,ps)
-					] 
-					-
-					sum[(tb,acr) | (tb='TNB01_10')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 34.4 ! Based on 10% emission reduction compared to the 2019 (37 Mton CO2)
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 34.4;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi35_BunkerNav {
 				IndexDomain: ps | ps='2035';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
-						(tech_use(t,ps)+				! Reference activity balance
-							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
-							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
-						activity_balances(t,ac,ps)
-					] 
-					-
-					sum[(tb,acr) | (tb='TNB01_10')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 32.5
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 32.5;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi40_BunkerNav {
 				IndexDomain: ps | ps='2040';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
-						(tech_use(t,ps)+				! Reference activity balance
-							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
-							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
-						activity_balances(t,ac,ps)
-					] 
-					-
-					sum[(tb,acr) | (tb='TNB01_10')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 30.5
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 30.5;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi45_BunkerNav {
 				IndexDomain: ps | ps='2045';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
-						(tech_use(t,ps)+				! Reference activity balance
-							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
-							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
-						activity_balances(t,ac,ps)
-					] 
-					-
-					sum[(tb,acr) | (tb='TNB01_10')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 28.6
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 28.6;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi50_BunkerNav {
 				IndexDomain: ps | ps='2050';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
-						(tech_use(t,ps)+				! Reference activity balance
-							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
-							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
-						activity_balances(t,ac,ps)
-					] 
-					-
-					sum[(tb,acr) | (tb='TNB01_10')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 26.7
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 26.7;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi30_BunkerAvi {
 				IndexDomain: ps | ps='2030';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
-					               (tech_use(t,ps)+                                                      ! Reference activity balance
-					               sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
-					               sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
-					               activity_balances(t,ac,ps)
-					               ] 
-					-
-					sum[(tb,acr) | (tb='TAI01_07')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 10.7
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 10.7;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi35_BunkerAvi {
 				IndexDomain: ps | ps='2035';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
-					               (tech_use(t,ps)+                                                      ! Reference activity balance
-					               sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
-					               sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
-					               activity_balances(t,ac,ps)
-					               ] 
-					-
-					sum[(tb,acr) | (tb='TAI01_07')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 9.4
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 9.4;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi40_BunkerAvi {
 				IndexDomain: ps | ps='2040';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
-					               (tech_use(t,ps)+                                                      ! Reference activity balance
-					               sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
-					               sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
-					               activity_balances(t,ac,ps)
-					               ] 
-					-
-					sum[(tb,acr) | (tb='TAI01_07')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]    
-					<= 8.1
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 8.1;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi45_BunkerAvi {
 				IndexDomain: ps | ps='2045';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
-					               (tech_use(t,ps)+                                                      ! Reference activity balance
-					               sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
-					               sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
-					               activity_balances(t,ac,ps)
-					               ] 
-					-
-					sum[(tb,acr) | (tb='TAI01_07')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]  
-					<= 6.2
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 6.2;
 				}
 			}
 			Constraint Adapt_SectoTarget_emi50_BunkerAvi {
 				IndexDomain: ps | ps='2050';
 				Definition: {
-					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
-					               (tech_use(t,ps)+                                                      ! Reference activity balance
-					               sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
-					               sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
-					               activity_balances(t,ac,ps)
-					               ] 
-					-
-					sum[(tb,acr) | (tb='TAI01_07')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]             
-					<= 5.5
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+					                                                         (tech_use(t,ps)+                                                      ! Reference activity balance
+					                                                                       sum[h, deltaU_CHP(h,t,ps)]+                !Impact of use deviation of CHPs
+					                                                                       sum[h, deltaS_shed(h,t,ps)])*               !Impact of shedding load
+					                                                         activity_balances(t,act,ps)
+					                                          ] 
+					                                          <= 5.5;
 				}
 			}
 			Constraint Adapt_RefinProd_2030 {
 				IndexDomain: ps | ps='2030';
+				Property: ShadowPrice;
 				Definition: {
 					sum[(a,t) | a in activities_energy, (tech_sector(t)='Refineries' and tech_subsector(t)='Fossil Based')*(activity_balances(t,a,ps)>0)*
 						(tech_use(t,ps)+				! Reference activity balance
@@ -10859,6 +10378,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint Adapt_FinalEnergy_2030 {
 				IndexDomain: ps | ps='2030';
+				Property: ShadowPrice;
 				Definition: {
 					sum[(tb,ae) | ((nodePer_techBal(tb)='NL')*(tech_category(tb)='Final')*(activityPer_tech(tb)<>'Bunker Navigation')*(activityType_act(activityPer_tech(tb))='Driver'))<>0,
 						(-1)
@@ -10896,243 +10416,438 @@ Model IESA_Opt_Package {
 					<= 1609  ! EED target by 2030
 				}
 			}
-			Constraint CO2_credits_Avi {
-				IndexDomain: ps;
-				Definition: {
-					!Sum of all CO2 credits for aviation must be equal to the CO2 inputs to e-kerosene and synkerosene used in the Bunker Aviation sector
-					!>= would allow additional credits to be used in this sector beyond what would correspond to the synthetic fuel use
-					
-					sum[(tb,acr) | (tb='TAI01_07')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]
-					-
-					([sum[(tb,ae) | (activityPer_tech(tb)='Bunker Aviation')*(ae='E-Kerosene'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					]
-					+
-					[sum[(tb,ae) | (activityPer_tech(tb)='Bunker Aviation')*(ae='Syn Kerosene'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					])
-					*0.072 !CO2 input to e-kerosene production (Mton/PJ) - rough estimate because different conversion efficiencies per process
-					=0;
-				}
-			}
-			Constraint CO2_credits_Nav {
-				IndexDomain: ps;
-				Definition: {
-					!Sum of all CO2 credits for aviation must be equal to the CO2 inputs to methanol and syn-diesel used in the Bunker Navigation sector
-					! >= would allow additional credits to be used in this sector beyond what would correspond to the synthetic fuel use
-					
-					sum[(tb,acr) | (tb='TNB01_10')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]
-					-
-					([sum[(tb,ae) | (activityPer_tech(tb)='Bunker Navigation')*(ae='Methanol'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					*0.074 !CO2 input to methanol production (Mton/PJ)
-					]
-					+
-					[sum[(tb,ae) | (activityPer_tech(tb)='Bunker Navigation')*(ae='E-Methanol'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					*0.074 !CO2 input to methanol production (Mton/PJ)
-					]
-					+
-					[sum[(tb,ae) | (activityPer_tech(tb)='Bunker Navigation')*(ae='Syn Diesel'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					]
-					*0.073 !CO2 input to diesel (Mton/PJ) - rough estimate because different conversion efficiencies per process
-					)
-					=0;
-				}
-			}
 		}
-		DeclarationSection ReFuelEU_Aviation {
-			Parameter ReFuelEU_Aviation_eSAF_target {
-				IndexDomain: p;
+		DeclarationSection Kira_paper {
+			Set activities_EOL {
+				SubsetOf: activities_solve;
+				Index: aeol, ieol, jeol;
 				Definition: {
-					data { 2030 : 0.012,  2035 : 0.050,  2040 : 0.100,  2045 : 0.150,  2050 : 0.350 }
-					
-					!eSAF targets from ReFuel EU Aviation
+					{as | labelPer_act(as)='EOL'}
 				}
 			}
-			Parameter ReFuelEU_Aviation_SAF_target {
-				IndexDomain: p;
-				Definition: data { 2030 : 0.060,  2035 : 0.200,  2040 : 0.340,  2045 : 0.420,  2050 : 0.700 };
-			}
-			Constraint eSAF_Aviation {
-				IndexDomain: p | p>='2030';
+			Set activities_bio {
+				SubsetOf: activities_solve;
+				Index: abio, ibio, jbio;
 				Definition: {
-					!E-kerosene use in Bunker Aviation must be greater than or equal target e-SAF level times total Bunker Aviation energy use
-					
-					
-					sum[(tb,ae) | (activityPer_tech(tb)='Bunker Aviation')*(ae='E-Kerosene')<>0,
-					(-1)
-					*
-					(tech_use(tb,p)
-					*activity_balances(tb,ae,p))
-					]
-					-
-					sum[(tb,ae) | activityPer_tech(tb)='Bunker Aviation',
-					(-1)
-					*
-					(tech_use(tb,p)
-					*activity_balances(tb,ae,p))
-					]
-					*ReFuelEU_Aviation_eSAF_target(p)
-					>=0;
+					{as | labelPer_act(as)='Biomass'} + {as | labelPer_act(as)='Bio-fuels'}
 				}
 			}
-			Constraint SAF_Aviation {
-				IndexDomain: p | p>='2030';
+			Set activities_DMI {
+				SubsetOf: activities_solve;
+				Index: admi, idmi, jdmi;
 				Definition: {
-					!Sum of e-kerosene, synkerosene, and biokerosene use in Bunker Aviation sector must meet the target percentage of total Bunker Aviation energy use
-					
-					sum[(tb,ae) | (activityPer_tech(tb)='Bunker Aviation')*(ae='E-Kerosene')<>0,
-					(-1)
-					*
-					(tech_use(tb,p)
-					*activity_balances(tb,ae,p))
-					]
-					+
-					sum[(tb,ae) | (activityPer_tech(tb)='Bunker Aviation')*(ae='Bio Kerosene')<>0,
-					(-1)
-					*
-					(tech_use(tb,p)
-					*activity_balances(tb,ae,p))
-					]
-					+
-					sum[(tb,ae) | (activityPer_tech(tb)='Bunker Aviation')*(ae='Syn Kerosene')<>0,
-					(-1)
-					*
-					(tech_use(tb,p)
-					*activity_balances(tb,ae,p))
-					]
-					-
-					sum[(tb,ae) | activityPer_tech(tb)='Bunker Aviation',
-					(-1)
-					*
-					(tech_use(tb,p)
-					*activity_balances(tb,ae,p))
-					]
-					*ReFuelEU_Aviation_SAF_target(p) !SAF target from ReFuelEU Aviation
-					>=0;
+					data 
+					    { Ammonia                                    , Biomass                                    ,
+					      Coal                                       , DRI                                        ,
+					      'Steel scrap'                              ,
+					      'Blast Furnace Gas'                        , LPG                                        ,
+					      Naphtha                                    , 'Road Fuel'                                ,
+					      Kerosene                                   , 'Fuel Oil'                                 ,
+					      'Other Oil Products'                       , 'Bio Naphtha'                              ,
+					      'Bio Ethanol'                              , 'Bio Diesel'                               ,
+					      'Bio Kerosene'                             , 'Syn Naphtha'                              ,
+					      'Syn Diesel'                               , 'Syn Kerosene'                             ,
+					      Syngas                                     , Methanol                                   ,
+					      'Natural Gas HD'                           , 'Natural Gas LD'                           ,
+					      'Natural Gas LNG'                          , 'Hydrogen HD'                              ,
+					      'Hydrogen LD'                              , 'Plastic pyrolysis oil'                    ,
+					      'Crude Oil'                                , 'National Natural Gas'                     ,
+					      Uranium                                    , Wood                                       ,
+					      Grasscrops                                 , 'Dry organic matter'                       ,
+					      'Wet organic matter'                       , Manure                                     ,
+					      Sugars                                     , Starch                                     ,
+					      'Vegetable Oil'                            }
 				}
 			}
-			Constraint H2_credits_Avi {
-				IndexDomain: ps;
+			Parameter LHV {
+				IndexDomain: (admi,p);
 				Definition: {
-					!Sum of all H2 credits for aviation must be equal to the H2 inputs to e-kerosene used in the Bunker Aviation sector
-					!This represents the RFNBO obligation under ReFuelEU Aviation
-					!Synkerosene use with other types of hydrogen are still allowed (synkerosene airplanes)
-					!H2 input is approximate
-					!>= would allow additional credits to be used in this sector beyond what would correspond to the synthetic fuel use
+					data 
+					{ ( Ammonia                                    , 2022 ) :     18.600,
+					  ( Ammonia                                    , 2025 ) :     18.600,
+					  ( Ammonia                                    , 2030 ) :     18.600,
+					  ( Ammonia                                    , 2035 ) :     18.600,
+					  ( Ammonia                                    , 2040 ) :     18.600,
+					  ( Ammonia                                    , 2045 ) :     18.600,
+					  ( Ammonia                                    , 2050 ) :     18.600,
+					  ( Biomass                                    , 2022 ) :     15.100,
+					  ( Biomass                                    , 2025 ) :     15.100,
+					  ( Biomass                                    , 2030 ) :     15.100,
+					  ( Biomass                                    , 2035 ) :     15.100,
+					  ( Biomass                                    , 2040 ) :     15.100,
+					  ( Biomass                                    , 2045 ) :     15.100,
+					  ( Biomass                                    , 2050 ) :     15.100,
+					  ( Coal                                       , 2022 ) :     29.300,
+					  ( Coal                                       , 2025 ) :     29.300,
+					  ( Coal                                       , 2030 ) :     29.300,
+					  ( Coal                                       , 2035 ) :     29.300,
+					  ( Coal                                       , 2040 ) :     29.300,
+					  ( Coal                                       , 2045 ) :     29.300,
+					  ( Coal                                       , 2050 ) :     29.300,
+					  ( DRI                                        , 2022 ) :      1.000,
+					  ( DRI                                        , 2025 ) :      1.000,
+					  ( DRI                                        , 2030 ) :      1.000,
+					  ( DRI                                        , 2035 ) :      1.000,
+					  ( DRI                                        , 2040 ) :      1.000,
+					  ( DRI                                        , 2045 ) :      1.000,
+					  ( DRI                                        , 2050 ) :      1.000,
+					  ( 'Steel scrap'                              , 2022 ) :      1.000,
+					  ( 'Steel scrap'                              , 2025 ) :      1.000,
+					  ( 'Steel scrap'                              , 2030 ) :      1.000,
+					  ( 'Steel scrap'                              , 2035 ) :      1.000,
+					  ( 'Steel scrap'                              , 2040 ) :      1.000,
+					  ( 'Steel scrap'                              , 2045 ) :      1.000,
+					  ( 'Steel scrap'                              , 2050 ) :      1.000,
+					  ( 'Blast Furnace Gas'                        , 2022 ) :      2.560,
+					  ( 'Blast Furnace Gas'                        , 2025 ) :      2.560,
+					  ( 'Blast Furnace Gas'                        , 2030 ) :      2.560,
+					  ( 'Blast Furnace Gas'                        , 2035 ) :      2.560,
+					  ( 'Blast Furnace Gas'                        , 2040 ) :      2.560,
+					  ( 'Blast Furnace Gas'                        , 2045 ) :      2.560,
+					  ( 'Blast Furnace Gas'                        , 2050 ) :      2.560,
+					  ( LPG                                        , 2022 ) :     45.200,
+					  ( LPG                                        , 2025 ) :     45.200,
+					  ( LPG                                        , 2030 ) :     45.200,
+					  ( LPG                                        , 2035 ) :     45.200,
+					  ( LPG                                        , 2040 ) :     45.200,
+					  ( LPG                                        , 2045 ) :     45.200,
+					  ( LPG                                        , 2050 ) :     45.200,
+					  ( Naphtha                                    , 2022 ) :     44.000,
+					  ( Naphtha                                    , 2025 ) :     44.000,
+					  ( Naphtha                                    , 2030 ) :     44.000,
+					  ( Naphtha                                    , 2035 ) :     44.000,
+					  ( Naphtha                                    , 2040 ) :     44.000,
+					  ( Naphtha                                    , 2045 ) :     44.000,
+					  ( Naphtha                                    , 2050 ) :     44.000,
+					  ( 'Road Fuel'                                , 2022 ) :     43.300,
+					  ( 'Road Fuel'                                , 2025 ) :     43.300,
+					  ( 'Road Fuel'                                , 2030 ) :     43.300,
+					  ( 'Road Fuel'                                , 2035 ) :     43.300,
+					  ( 'Road Fuel'                                , 2040 ) :     43.300,
+					  ( 'Road Fuel'                                , 2045 ) :     43.300,
+					  ( 'Road Fuel'                                , 2050 ) :     43.300,
+					  ( Kerosene                                   , 2022 ) :     43.500,
+					  ( Kerosene                                   , 2025 ) :     43.500,
+					  ( Kerosene                                   , 2030 ) :     43.500,
+					  ( Kerosene                                   , 2035 ) :     43.500,
+					  ( Kerosene                                   , 2040 ) :     43.500,
+					  ( Kerosene                                   , 2045 ) :     43.500,
+					  ( Kerosene                                   , 2050 ) :     43.500,
+					  ( 'Fuel Oil'                                 , 2022 ) :     41.000,
+					  ( 'Fuel Oil'                                 , 2025 ) :     41.000,
+					  ( 'Fuel Oil'                                 , 2030 ) :     41.000,
+					  ( 'Fuel Oil'                                 , 2035 ) :     41.000,
+					  ( 'Fuel Oil'                                 , 2040 ) :     41.000,
+					  ( 'Fuel Oil'                                 , 2045 ) :     41.000,
+					  ( 'Fuel Oil'                                 , 2050 ) :     41.000,
+					  ( 'Other Oil Products'                       , 2022 ) :     40.200,
+					  ( 'Other Oil Products'                       , 2025 ) :     40.200,
+					  ( 'Other Oil Products'                       , 2030 ) :     40.200,
+					  ( 'Other Oil Products'                       , 2035 ) :     40.200,
+					  ( 'Other Oil Products'                       , 2040 ) :     40.200,
+					  ( 'Other Oil Products'                       , 2045 ) :     40.200,
+					  ( 'Other Oil Products'                       , 2050 ) :     40.200,
+					  ( 'Bio Naphtha'                              , 2022 ) :     44.000,
+					  ( 'Bio Naphtha'                              , 2025 ) :     44.000,
+					  ( 'Bio Naphtha'                              , 2030 ) :     44.000,
+					  ( 'Bio Naphtha'                              , 2035 ) :     44.000,
+					  ( 'Bio Naphtha'                              , 2040 ) :     44.000,
+					  ( 'Bio Naphtha'                              , 2045 ) :     44.000,
+					  ( 'Bio Naphtha'                              , 2050 ) :     44.000,
+					  ( 'Bio Ethanol'                              , 2022 ) :     26.700,
+					  ( 'Bio Ethanol'                              , 2025 ) :     26.700,
+					  ( 'Bio Ethanol'                              , 2030 ) :     26.700,
+					  ( 'Bio Ethanol'                              , 2035 ) :     26.700,
+					  ( 'Bio Ethanol'                              , 2040 ) :     26.700,
+					  ( 'Bio Ethanol'                              , 2045 ) :     26.700,
+					  ( 'Bio Ethanol'                              , 2050 ) :     26.700,
+					  ( 'Bio Diesel'                               , 2022 ) :     43.200,
+					  ( 'Bio Diesel'                               , 2025 ) :     43.200,
+					  ( 'Bio Diesel'                               , 2030 ) :     43.200,
+					  ( 'Bio Diesel'                               , 2035 ) :     43.200,
+					  ( 'Bio Diesel'                               , 2040 ) :     43.200,
+					  ( 'Bio Diesel'                               , 2045 ) :     43.200,
+					  ( 'Bio Diesel'                               , 2050 ) :     43.200,
+					  ( 'Bio Kerosene'                             , 2022 ) :     43.500,
+					  ( 'Bio Kerosene'                             , 2025 ) :     43.500,
+					  ( 'Bio Kerosene'                             , 2030 ) :     43.500,
+					  ( 'Bio Kerosene'                             , 2035 ) :     43.500,
+					  ( 'Bio Kerosene'                             , 2040 ) :     43.500,
+					  ( 'Bio Kerosene'                             , 2045 ) :     43.500,
+					  ( 'Bio Kerosene'                             , 2050 ) :     43.500,
+					  ( 'Syn Naphtha'                              , 2022 ) :     44.000,
+					  ( 'Syn Naphtha'                              , 2025 ) :     44.000,
+					  ( 'Syn Naphtha'                              , 2030 ) :     44.000,
+					  ( 'Syn Naphtha'                              , 2035 ) :     44.000,
+					  ( 'Syn Naphtha'                              , 2040 ) :     44.000,
+					  ( 'Syn Naphtha'                              , 2045 ) :     44.000,
+					  ( 'Syn Naphtha'                              , 2050 ) :     44.000,
+					  ( 'Syn Diesel'                               , 2022 ) :     43.200,
+					  ( 'Syn Diesel'                               , 2025 ) :     43.200,
+					  ( 'Syn Diesel'                               , 2030 ) :     43.200,
+					  ( 'Syn Diesel'                               , 2035 ) :     43.200,
+					  ( 'Syn Diesel'                               , 2040 ) :     43.200,
+					  ( 'Syn Diesel'                               , 2045 ) :     43.200,
+					  ( 'Syn Diesel'                               , 2050 ) :     43.200,
+					  ( 'Syn Kerosene'                             , 2022 ) :     43.500,
+					  ( 'Syn Kerosene'                             , 2025 ) :     43.500,
+					  ( 'Syn Kerosene'                             , 2030 ) :     43.500,
+					  ( 'Syn Kerosene'                             , 2035 ) :     43.500,
+					  ( 'Syn Kerosene'                             , 2040 ) :     43.500,
+					  ( 'Syn Kerosene'                             , 2045 ) :     43.500,
+					  ( 'Syn Kerosene'                             , 2050 ) :     43.500,
+					  ( Syngas                                     , 2022 ) :     14.850,
+					  ( Syngas                                     , 2025 ) :     14.850,
+					  ( Syngas                                     , 2030 ) :     14.850,
+					  ( Syngas                                     , 2035 ) :     14.850,
+					  ( Syngas                                     , 2040 ) :     14.850,
+					  ( Syngas                                     , 2045 ) :     14.850,
+					  ( Syngas                                     , 2050 ) :     14.850,
+					  ( Methanol                                   , 2022 ) :     19.900,
+					  ( Methanol                                   , 2025 ) :     19.900,
+					  ( Methanol                                   , 2030 ) :     19.900,
+					  ( Methanol                                   , 2035 ) :     19.900,
+					  ( Methanol                                   , 2040 ) :     19.900,
+					  ( Methanol                                   , 2045 ) :     19.900,
+					  ( Methanol                                   , 2050 ) :     19.900,
+					  ( 'Natural Gas HD'                           , 2022 ) :     50.000,
+					  ( 'Natural Gas HD'                           , 2025 ) :     50.000,
+					  ( 'Natural Gas HD'                           , 2030 ) :     50.000,
+					  ( 'Natural Gas HD'                           , 2035 ) :     50.000,
+					  ( 'Natural Gas HD'                           , 2040 ) :     50.000,
+					  ( 'Natural Gas HD'                           , 2045 ) :     50.000,
+					  ( 'Natural Gas HD'                           , 2050 ) :     50.000,
+					  ( 'Natural Gas LD'                           , 2022 ) :     50.000,
+					  ( 'Natural Gas LD'                           , 2025 ) :     50.000,
+					  ( 'Natural Gas LD'                           , 2030 ) :     50.000,
+					  ( 'Natural Gas LD'                           , 2035 ) :     50.000,
+					  ( 'Natural Gas LD'                           , 2040 ) :     50.000,
+					  ( 'Natural Gas LD'                           , 2045 ) :     50.000,
+					  ( 'Natural Gas LD'                           , 2050 ) :     50.000,
+					  ( 'Natural Gas LNG'                          , 2022 ) :     48.600,
+					  ( 'Natural Gas LNG'                          , 2025 ) :     48.600,
+					  ( 'Natural Gas LNG'                          , 2030 ) :     48.600,
+					  ( 'Natural Gas LNG'                          , 2035 ) :     48.600,
+					  ( 'Natural Gas LNG'                          , 2040 ) :     48.600,
+					  ( 'Natural Gas LNG'                          , 2045 ) :     48.600,
+					  ( 'Natural Gas LNG'                          , 2050 ) :     48.600,
+					  ( 'Hydrogen HD'                              , 2022 ) :    120.000,
+					  ( 'Hydrogen HD'                              , 2025 ) :    120.000,
+					  ( 'Hydrogen HD'                              , 2030 ) :    120.000,
+					  ( 'Hydrogen HD'                              , 2035 ) :    120.000,
+					  ( 'Hydrogen HD'                              , 2040 ) :    120.000,
+					  ( 'Hydrogen HD'                              , 2045 ) :    120.000,
+					  ( 'Hydrogen HD'                              , 2050 ) :    120.000,
+					  ( 'Hydrogen LD'                              , 2022 ) :    120.000,
+					  ( 'Hydrogen LD'                              , 2025 ) :    120.000,
+					  ( 'Hydrogen LD'                              , 2030 ) :    120.000,
+					  ( 'Hydrogen LD'                              , 2035 ) :    120.000,
+					  ( 'Hydrogen LD'                              , 2040 ) :    120.000,
+					  ( 'Hydrogen LD'                              , 2045 ) :    120.000,
+					  ( 'Hydrogen LD'                              , 2050 ) :    120.000,
+					  ( 'Plastic pyrolysis oil'                    , 2022 ) :     44.000,
+					  ( 'Plastic pyrolysis oil'                    , 2025 ) :     44.000,
+					  ( 'Plastic pyrolysis oil'                    , 2030 ) :     44.000,
+					  ( 'Plastic pyrolysis oil'                    , 2035 ) :     44.000,
+					  ( 'Plastic pyrolysis oil'                    , 2040 ) :     44.000,
+					  ( 'Plastic pyrolysis oil'                    , 2045 ) :     44.000,
+					  ( 'Plastic pyrolysis oil'                    , 2050 ) :     44.000,
+					  ( 'Crude Oil'                                , 2022 ) :     42.700,
+					  ( 'Crude Oil'                                , 2025 ) :     42.700,
+					  ( 'Crude Oil'                                , 2030 ) :     42.700,
+					  ( 'Crude Oil'                                , 2035 ) :     42.700,
+					  ( 'Crude Oil'                                , 2040 ) :     42.700,
+					  ( 'Crude Oil'                                , 2045 ) :     42.700,
+					  ( 'Crude Oil'                                , 2050 ) :     42.700,
+					  ( 'National Natural Gas'                     , 2022 ) :     50.000,
+					  ( 'National Natural Gas'                     , 2025 ) :     50.000,
+					  ( 'National Natural Gas'                     , 2030 ) :     50.000,
+					  ( 'National Natural Gas'                     , 2035 ) :     50.000,
+					  ( 'National Natural Gas'                     , 2040 ) :     50.000,
+					  ( 'National Natural Gas'                     , 2045 ) :     50.000,
+					  ( 'National Natural Gas'                     , 2050 ) :     50.000,
+					  ( Uranium                                    , 2022 ) : 500000.000,
+					  ( Uranium                                    , 2025 ) : 500000.000,
+					  ( Uranium                                    , 2030 ) : 500000.000,
+					  ( Uranium                                    , 2035 ) : 500000.000,
+					  ( Uranium                                    , 2040 ) : 500000.000,
+					  ( Uranium                                    , 2045 ) : 500000.000,
+					  ( Uranium                                    , 2050 ) : 500000.000,
+					  ( Wood                                       , 2022 ) :     15.100,
+					  ( Wood                                       , 2025 ) :     15.100,
+					  ( Wood                                       , 2030 ) :     15.100,
+					  ( Wood                                       , 2035 ) :     15.100,
+					  ( Wood                                       , 2040 ) :     15.100,
+					  ( Wood                                       , 2045 ) :     15.100,
+					  ( Wood                                       , 2050 ) :     15.100,
+					  ( Grasscrops                                 , 2022 ) :     15.100,
+					  ( Grasscrops                                 , 2025 ) :     15.100,
+					  ( Grasscrops                                 , 2030 ) :     15.100,
+					  ( Grasscrops                                 , 2035 ) :     15.100,
+					  ( Grasscrops                                 , 2040 ) :     15.100,
+					  ( Grasscrops                                 , 2045 ) :     15.100,
+					  ( Grasscrops                                 , 2050 ) :     15.100,
+					  ( 'Dry organic matter'                       , 2022 ) :     15.100,
+					  ( 'Dry organic matter'                       , 2025 ) :     15.100,
+					  ( 'Dry organic matter'                       , 2030 ) :     15.100,
+					  ( 'Dry organic matter'                       , 2035 ) :     15.100,
+					  ( 'Dry organic matter'                       , 2040 ) :     15.100,
+					  ( 'Dry organic matter'                       , 2045 ) :     15.100,
+					  ( 'Dry organic matter'                       , 2050 ) :     15.100,
+					  ( 'Wet organic matter'                       , 2022 ) :     15.100,
+					  ( 'Wet organic matter'                       , 2025 ) :     15.100,
+					  ( 'Wet organic matter'                       , 2030 ) :     15.100,
+					  ( 'Wet organic matter'                       , 2035 ) :     15.100,
+					  ( 'Wet organic matter'                       , 2040 ) :     15.100,
+					  ( 'Wet organic matter'                       , 2045 ) :     15.100,
+					  ( 'Wet organic matter'                       , 2050 ) :     15.100,
+					  ( Manure                                     , 2022 ) :     15.100,
+					  ( Manure                                     , 2025 ) :     15.100,
+					  ( Manure                                     , 2030 ) :     15.100,
+					  ( Manure                                     , 2035 ) :     15.100,
+					  ( Manure                                     , 2040 ) :     15.100,
+					  ( Manure                                     , 2045 ) :     15.100,
+					  ( Manure                                     , 2050 ) :     15.100,
+					  ( Sugars                                     , 2022 ) :     15.100,
+					  ( Sugars                                     , 2025 ) :     15.100,
+					  ( Sugars                                     , 2030 ) :     15.100,
+					  ( Sugars                                     , 2035 ) :     15.100,
+					  ( Sugars                                     , 2040 ) :     15.100,
+					  ( Sugars                                     , 2045 ) :     15.100,
+					  ( Sugars                                     , 2050 ) :     15.100,
+					  ( Starch                                     , 2022 ) :     15.100,
+					  ( Starch                                     , 2025 ) :     15.100,
+					  ( Starch                                     , 2030 ) :     15.100,
+					  ( Starch                                     , 2035 ) :     15.100,
+					  ( Starch                                     , 2040 ) :     15.100,
+					  ( Starch                                     , 2045 ) :     15.100,
+					  ( Starch                                     , 2050 ) :     15.100,
+					  ( 'Vegetable Oil'                            , 2022 ) :     37.800,
+					  ( 'Vegetable Oil'                            , 2025 ) :     37.800,
+					  ( 'Vegetable Oil'                            , 2030 ) :     37.800,
+					  ( 'Vegetable Oil'                            , 2035 ) :     37.800,
+					  ( 'Vegetable Oil'                            , 2040 ) :     37.800,
+					  ( 'Vegetable Oil'                            , 2045 ) :     37.800,
+					  ( 'Vegetable Oil'                            , 2050 ) :     37.800
 					
-					sum[(tb,acr) | (tb='TAI01_06')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]
-					-
-					[sum[(tb,ae) | (activityPer_tech(tb)='Bunker Aviation')*(ae='E-Kerosene'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					*2.1 !hydrogen input to e-kerosene production (PJ/PJ) - rough estimate because different conversion efficiencies per process
-					]
-					=0;
+					 }
 				}
 			}
-		}
-		DeclarationSection FuelEU_Maritime {
-			Parameter FuelEU_Maritime_target {
-				IndexDomain: p;
+			Constraint DMI_target_2050 {
+				IndexDomain: ps | ps='2050';
 				Definition: {
-					data { 2030 : 35.000,  2035 : 32.200,  2040 : 26.700,  2045 : 16.400,  2050 : 10.400 }
+					!total material input in mass terms
+					sum[admi,sum[t, (tech_category(t)="Primary")*(activityPer_tech(t)=admi)*tech_use(t,ps)*activity_balances(t,admi,ps)]
+					/
+					LHV(admi,ps)]
+					!total biogenic input in mass terms
+					-sum[abio,sum[t, (tech_category(t)="Primary")*(activityPer_tech(t)=abio)*tech_use(t,ps)*activity_balances(t,abio,ps)]
+					/
+					LHV(abio,ps)]
+					!total end-of-life material input in mass terms
+					-sum[aeol,sum[t, (tech_category(t)="Primary")*(activityPer_tech(t)=aeol)*tech_use(t,ps)*activity_balances(t,aeol,ps)]
+					/
+					LHV(aeol,ps)]
+					!2050 target
+					<= 72.91;
 					
-					! 2030 Based on 6% emission reduction compared to the 2019 (37 Mton CO2)
+					
+					!proportional goal (based on halving 2016 level of DMI)
 				}
 			}
-			Constraint SectorTarget_emi_BunkerNav {
-				IndexDomain: p | p>'2030';
+			Parameter calc_Bio_DMI {
+				IndexDomain: (abio,ps);
+				Range: nonnegative;
 				Definition: {
-					!Total accounted emissions from Bunker Navigation sector (including emissions from synfuels) minus CO2 credits used in Bunker Aviation less than or equal to the target
+					!biogenic material inputs in mass terms
+					sum[t, (tech_category(t)="Primary")*(activityPer_tech(t)=abio)*tech_use(t,ps)*activity_balances(t,abio,ps)]
+					/
+					LHV(abio,ps)
+				}
+			}
+			Parameter calc_circular_DMI {
+				IndexDomain: (aeol,ps);
+				Definition: {
+					!end of life material inputs in mass terms
 					
-					sum[(atb,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
-						(tech_use(t,p)+				! Reference activity balance
-							sum[h, deltaU_CHP(h,t,p)]+		!Impact of use deviation of CHPs
-							sum[h, deltaS_shed(h,t,p)])*		!Impact of shedding load
-						activity_balances(t,atb,p)
+					sum[t, (tech_category(t)="Primary")*(activityPer_tech(t)=aeol)*tech_use(t,ps)*activity_balances(t,aeol,ps)]
+					/
+					LHV(aeol,ps)
+				}
+			}
+			Parameter calc_DMI {
+				IndexDomain: (admi,ps);
+				Range: nonnegative;
+				Definition: {
+					!total material inputs in mass terms
+					
+					sum[t, (tech_category(t)="Primary")*(activityPer_tech(t)=admi)*tech_use(t,ps)*activity_balances(t,admi,ps)]
+					/
+					LHV(admi,ps)
+				}
+			}
+			Constraint SectoTarget_emi_R_2050 {
+				IndexDomain: ps | ps='2050';
+				Definition: {
+					sum[(act,t), (tech_sector_kev(t)='Gebouwde omgeving')*
+						(tech_use(t,ps)+				! Reference activity balance
+							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
+							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
+						activity_balances(t,act,ps)
 					] 
-					-
-					sum[(tb,acr) | (tb='TNB01_10')<>0,
-					(-1)
-					*
-					(tech_use(tb,p)
-					*activity_balances(tb,acr,p))
-					]    
-					<= FuelEU_Maritime_target(p); !emission target values contained in this (manually added) parameter
+					 <= 0;
 				}
 			}
-			Constraint H2_credits_Nav {
-				IndexDomain: ps;
+			Constraint SectoTarget_emi_A_2050 {
+				IndexDomain: ps | ps='2050';
 				Definition: {
-					!Sum of all H2 credits for navigation must be equal to the H2 inputs to methanol or ammonia used in the Bunker Navigation sector
-					!This represents the RFNBO obligation under FuelEU Maritime
-					!Syndiesel use with other types of hydrogen are still allowed (syndiesel ships)
-					!H2 input is approximate
-					!>= would allow additional credits to be used in this sector beyond what would correspond to the synthetic fuel use
-					
-					sum[(tb,acr) | (tb='TNB01_09')<>0,
-					(-1)
-					*
-					(tech_use(tb,ps)
-					*activity_balances(tb,acr,ps))
-					]
-					-
-					([sum[(tb,ae) | (activityPer_tech(tb)='Bunker Navigation')*(ae='Ammonia'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					*1.15 !hydrogen input to methanol production (PJ/PJ) 
-					]
-					+
-					[sum[(tb,ae) | (activityPer_tech(tb)='Bunker Navigation')*(ae='Methanol'),
-					(-1)
-					*
-					tech_use(tb,ps)
-					*activity_balances(tb,ae,ps)]
-					*1.20 !hydrogen input to ammonia production (PJ/PJ) 
-					])
-					
-					=0;
+					sum[(act,t), (tech_sector_kev(t)='Landbouw')*
+						(tech_use(t,ps)+				! Reference activity balance
+							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
+							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
+						activity_balances(t,act,ps)
+					]  
+					<= 7
+				}
+			}
+			Constraint SectoTarget_emi_T_2050 {
+				IndexDomain: ps | ps='2050';
+				Definition: {
+					sum[(act,t), (tech_sector_kev(t)='Mobiliteit')*
+						(tech_use(t,ps)+				! Reference activity balance
+							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
+							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
+						activity_balances(t,act,ps)
+					] 
+					<= 1
+				}
+			}
+			Constraint SectoTarget_emi_I_2050 {
+				IndexDomain: ps | ps='2050';
+				Definition: {
+					sum[(act,t), 
+						(tech_sector_kev(t)='Industrie')*
+						(tech_use(t,ps)+				! Reference activity balance
+							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
+							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
+						activity_balances(t,act,ps)
+					] 
+					<= 0
+				}
+			}
+			Constraint SectoTarget_emi_E_2050 {
+				IndexDomain: ps | ps='2030';
+				Definition: {
+					sum[(act,t), (tech_sector_kev(t)='Elektriciteit')*
+						(tech_use(t,ps)+				! Reference activity balance
+							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
+							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
+						activity_balances(t,act,ps)
+					] 
+					<= 0
 				}
 			}
 		}
-		DeclarationSection Kira_paper;
 		DeclarationSection Transform {
 			Constraint Transform_SectoTarget_emi_R {
 				IndexDomain: ps | ps='2030';
@@ -11197,30 +10912,33 @@ Model IESA_Opt_Package {
 			}
 			Constraint Transform_SectoTarget_emi_BunkerAvi {
 				IndexDomain: ps | ps='2030';
+				Property: ShadowPrice;
 				Definition: {
-					sum[(atb,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
+					sum[(act,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Aviation')*
 						(tech_use(t,ps)+				! Reference activity balance
 							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
 							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
-						activity_balances(t,atb,ps)
+						activity_balances(t,act,ps)
 					] 
 					<= 9.21
 				}
 			}
 			Constraint Transform_SectoTarget_emi_BunkerNav {
 				IndexDomain: ps | ps='2030';
+				Property: ShadowPrice;
 				Definition: {
-					sum[(atb,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
+					sum[(ac,t), (tech_sector_kev(t)='Bunkerbrandstoffen')*(tech_activity(t)='Bunker Navigation')*
 						(tech_use(t,ps)+				! Reference activity balance
 							sum[h, deltaU_CHP(h,t,ps)]+		!Impact of use deviation of CHPs
 							sum[h, deltaS_shed(h,t,ps)])*		!Impact of shedding load
-						activity_balances(t,atb,ps)
+						activity_balances(t,ac,ps)
 					] 
 					<= 31.24
 				}
 			}
 			Constraint Transform_RefinProd_2030 {
 				IndexDomain: ps | ps='2030';
+				Property: ShadowPrice;
 				Definition: {
 					sum[(a,t) | a in activities_energy, (tech_sector(t)='Refineries' and tech_subsector(t)='Fossil Based')*(activity_balances(t,a,ps)>0)*
 						(tech_use(t,ps)+				! Reference activity balance
@@ -11245,6 +10963,7 @@ Model IESA_Opt_Package {
 			}
 			Constraint Transform_FinalEnergy_2030 {
 				IndexDomain: ps | ps='2030';
+				Property: ShadowPrice;
 				Definition: {
 					sum[(tb,ae) | ((nodePer_techBal(tb)='NL')*(tech_category(tb)='Final')*(activityPer_tech(tb)<>'Bunker Navigation')*(activityType_act(activityPer_tech(tb))='Driver'))<>0,
 						(-1)
@@ -11279,121 +10998,6 @@ Model IESA_Opt_Package {
 					]
 					
 					<= 1609  ! EED target by 2030
-				}
-			}
-		}
-		DeclarationSection RFNBO_Industry_and_Transport {
-			Comment: {
-				"https://energy.ec.europa.eu/topics/eus-energy-system/hydrogen/renewable-hydrogen_en
-				
-				RFNBO obligations for industry and transport under the Renewable Energy Directive
-				42% of total H2 for industry must be RFNBO by 2030, 60% by 2035
-				1% of total energy in transport must be RFNBO by 2030
-				
-				Targets for transport include bunkers:
-				https://energy.ec.europa.eu/document/download/0c574279-b71d-4aa0-9403-daf9ea5a8491_en?filename=C_2024_5042_1_EN_ACT_part1_v8.pdf"
-			}
-			Parameter RFNBO_Industry_target {
-				IndexDomain: p;
-				Definition: data { 2030 : 0.420,  2035 : 0.600,  2040 : 0.600,  2045 : 0.600,  2050 : 0.600 };
-			}
-			Constraint RFNBO_industry {
-				IndexDomain: p | p>='2030';
-				Definition: {
-					!Sum of RFNBO credits for industry >= 42% of total hydrogen use in industry
-					!Klimaattafel industry sector is broader than other definitions (includes refining, ammonia, heat gen, etc)
-					!This needs to be expanded to include synthetic fuel inputs to industry
-					
-					sum[(tb,acr) | (tb='ICR01_01')<>0,(-1)*(tech_use(tb,p)*activity_balances(tb,acr,p))] ! credits in industry
-					-
-					(sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Hydrogen HD')*(activity_balances(tb,ae,p)<=0)<>0,(-1)*tech_use(tb,p)*activity_balances(tb,ae,p)]
-					!direct hydrogen input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syndiesel')*(activity_balances(tb,ae,p)<=0)<>0,(-1)*tech_use(tb,p)*activity_balances(tb,ae,p)]*1.6
-					!hydrogen for syndiesel input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Ammonia')*(activity_balances(tb,ae,p)<=0)<>0,(-1)*tech_use(tb,p)*activity_balances(tb,ae,p)]*1.15
-					!hydrogen for ammonia input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syn Naphtha')*(activity_balances(tb,ae,p)<=0)<>0,(-1)*tech_use(tb,p)*activity_balances(tb,ae,p)]*1.6*0.33
-					!hydrogen for syn naphtha input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syn Kerosene')*(activity_balances(tb,ae,p)<=0)<>0,(-1)*tech_use(tb,p)*activity_balances(tb,ae,p)]*1.6*0.33
-					!hydrogen for syn kerosene to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syngas')*(activity_balances(tb,ae,p)<=0)<>0,(-1)*tech_use(tb,p)*activity_balances(tb,ae,p)]*1.35
-					!hydrogen for syngas input to industry sector (Klimaattafel definition)
-					)
-					*RFNBO_Industry_target(p)
-					>=0;
-				}
-			}
-			Constraint RFNBO_transport {
-				IndexDomain: ps | ps>='2030';
-				Definition: {
-					!Sum of RFNBO credits for transport >= 1% of total transport energy use
-					
-					sum[(tb,acr) | (tb='TAI01_06')<>0,(-1)*(tech_use(tb,ps)*activity_balances(tb,acr,ps))] ! credits in aviation bunkers
-					+
-					sum[(tb,acr) | (tb='TNB01_09')<>0,(-1)*(tech_use(tb,ps)*activity_balances(tb,acr,ps))] ! credits in navigation bunkers
-					+
-					sum[(tb,acr) | (tb='TOT01_03')<>0,(-1)*(tech_use(tb,ps)*activity_balances(tb,acr,ps))] ! credits in domestic transport
-					-
-					sum[(tb,ae) | tech_sector(tb)='Transport',(-1)*(tech_use(tb,ps)*activity_balances(tb,ae,ps))]*0.01 !1% RFNBO target in transport by 2030 (Renewable Energy Directive)
-					>=0;
-				}
-			}
-			Constraint H2_credits_transport {
-				IndexDomain: ps;
-				Definition: {
-					!Sum of all H2 credits for domestic transport must be less than or equal to the H2 inputs to domestic transport (cannot use credits to offset, must be related to an actual use of H2)
-					!Synfuel use with other types of hydrogen/CO2 are still allowed
-					!>= would allow additional credits to be used in this sector beyond what would correspond to the synthetic fuel use
-					
-					sum[(tb,acr) | (tb='TOT01_03')<>0,(-1)*(tech_use(tb,ps)*activity_balances(tb,acr,ps))] !total credits used
-					-
-					(
-					sum[(tb,ae) | (tech_sector(tb)='Transport')*(tech_sector_kev(tb)='Mobiliteit')*(ae='Hydrogen LD'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]
-					!direct hydrogen input to domestic transport
-					+
-					sum[(tb,ae) | (tech_sector(tb)='Transport')*(tech_sector_kev(tb)='Mobiliteit')*(ae='Syndiesel'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]*1.6
-					!H2 input to syndiesel for domestic transport (average of syngas inputs to FT and methanol to fuels options)
-					+
-					sum[(tb,ae) | (activityPer_tech(tb)='Domestic Navigation')*(ae='Ammonia'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]*1.15
-					!H2 input to ammonia for inland shipping
-					)
-					<=0;
-				}
-			}
-			Constraint H2_credits_industry {
-				IndexDomain: ps;
-				Definition: {
-					!Sum of all H2 credits for industry must be less than or equal to the H2 inputs to industry(cannot use credits to offset, must be related to an actual use of H2)
-					!Synfuel use with other types of hydrogen/CO2 are still allowed
-					!>= would allow additional credits to be used in this sector beyond what would correspond to the synthetic fuel use
-					
-					sum[(tb,acr) | (tb='TCR01_01')<>0,(-1)*(tech_use(tb,ps)*activity_balances(tb,acr,ps))] !total credits used
-					-
-					(
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Hydrogen HD'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]
-					!direct hydrogen input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syndiesel'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]*1.6
-					!hydrogen for syndiesel input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Ammonia'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]*1.15
-					!hydrogen for ammonia input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syn Naphtha'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]*1.6*0.33
-					!hydrogen for syn naphtha input to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syn Kerosene'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]*1.6*0.33
-					!hydrogen for syn kerosene to industry sector (Klimaattafel definition)
-					+
-					sum[(tb,ae) | (tech_sector_kev(tb)='Industrie')*(ae='Syngas'),(-1)*tech_use(tb,ps)*activity_balances(tb,ae,ps)]*1.35
-					!hydrogen for syngas input to industry sector (Klimaattafel definition)
-					)
-					<=0;
 				}
 			}
 		}
